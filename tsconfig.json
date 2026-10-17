@@ -7,6 +7,7 @@
     "types": ["node"],
     "noUncheckedIndexedAccess": true,
     "exactOptionalPropertyTypes": true,
+    "experimentalDecorators": true,
     "declaration": true,
     "rootDir": ".",
     "outDir": "dist",

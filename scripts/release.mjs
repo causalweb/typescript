@@ -6,6 +6,8 @@ import { fileURLToPath } from "node:url";
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const json = (path) => JSON.parse(readFileSync(join(root, path), "utf8"));
+const changesetsCli =
+  process.env.CAUSALWEB_CHANGESETS_CLI ?? join(root, "node_modules/@changesets/cli/bin.js");
 function check() {
   const pkg = json("package.json"),
     config = json(".changeset/config.json"),
@@ -39,18 +41,13 @@ if (command === "check" && process.env.CAUSALWEB_CHANGESET_BASE) {
   assert.match(process.env.CAUSALWEB_CHANGESET_BASE, /^[a-f0-9]{40}$/);
   execFileSync(
     process.execPath,
-    [
-      join(root, "node_modules/@changesets/cli/bin.js"),
-      "status",
-      "--since",
-      process.env.CAUSALWEB_CHANGESET_BASE,
-    ],
+    [changesetsCli, "status", "--since", process.env.CAUSALWEB_CHANGESET_BASE],
     { cwd: root, stdio: "inherit" },
   );
 }
 if (command === "prepare") {
   assert.ok(process.env.npm_execpath?.endsWith("npm-cli.js"), "use npm run version:prepare");
-  execFileSync(process.execPath, [join(root, "node_modules/@changesets/cli/bin.js"), "version"], {
+  execFileSync(process.execPath, [changesetsCli, "version"], {
     cwd: root,
     stdio: "inherit",
   });
@@ -71,7 +68,7 @@ if (command === "prepare") {
   execFileSync(
     process.execPath,
     [
-      join(root, "node_modules/@changesets/cli/bin.js"),
+      changesetsCli,
       "add",
       "--empty",
       "--message",

@@ -79,7 +79,7 @@ const handled = await handleNodeObservation(request, response, {
 if (!handled) routeOrdinaryRequest(request, response);
 ```
 
-The adapter writes every causal response itself. It preserves separate `Set-Cookie` fields, returns safe marker-free ordinary errors for local adapter failures, and does not invoke a normal route after handling a causal request. It cannot make a mutable read into a snapshot: `read` must bind representation bytes and trusted lineage to the same immutable state cut. It also does not supply cancellation, TLS, authorization, or a database transaction. Framework-specific integrations are not yet released.
+The adapter writes every causal response itself. It preserves separate `Set-Cookie` fields, returns safe marker-free ordinary errors for local adapter failures, and does not invoke a normal route after handling a causal request. It cannot make a mutable read into a snapshot: `read` must bind representation bytes and trusted lineage to the same immutable state cut. It also does not supply cancellation, TLS, authorization, or a database transaction.
 
 ### Fastify 5 adapter
 
@@ -95,6 +95,20 @@ app.get("/orders/42", async (request, reply) => {
 ```
 
 The integration has only loopback test evidence. It is not a Fastify core contribution, an upstream endorsement, a durable projection adapter, or an assurance that application hooks enforce authorization around a causal response.
+
+### NestJS 12 on Express
+
+The same Node bridge is exercised through a NestJS `12.1.3` application using its Express platform. Nest's `@Res()` selects library-specific response handling: the controller owns the entire response and must not return a competing framework payload after a causal request has been written.
+
+```ts
+@Get("orders/42")
+async view(@Req() request: Request, @Res() response: Response): Promise<void> {
+  if (await handleNodeObservation(request, response, observerOptions)) return;
+  response.json(await ordinaryOrderResponse());
+}
+```
+
+This is compatibility evidence for the Node bridge, not a Nest module, interceptor, decorator package, or a claim that all Nest middleware, guards, or response-mapping features apply to the raw causal path. The [Nest controller guidance](https://docs.nestjs.com/controllers) similarly assigns response ownership to handlers using `@Res()`.
 
 ## Producer and observer responsibilities
 

@@ -12,6 +12,7 @@ assert.ok(npmCli?.endsWith("npm-cli.js"), "run npm run test:release");
 const env = { ...process.env };
 delete env.NODE_PATH;
 delete env.CAUSALWEB_CHANGESET_BASE;
+env.CAUSALWEB_CHANGESETS_CLI = join(root, "node_modules", "@changesets", "cli", "bin.js");
 for (const key of ["GIT_DIR", "GIT_WORK_TREE", "GIT_INDEX_FILE", "GIT_COMMON_DIR"]) delete env[key];
 const run = (program, args) =>
   execFileSync(program, args, {
@@ -22,6 +23,23 @@ const run = (program, args) =>
   });
 const npm = (args) => run(process.execPath, [npmCli, ...args]);
 const json = (path) => JSON.parse(readFileSync(join(scratch, path), "utf8"));
+function dependencyResolution(lock) {
+  const normalized = structuredClone(lock);
+  delete normalized.version;
+  const rootPackage = normalized.packages[""];
+  for (const field of [
+    "name",
+    "version",
+    "license",
+    "engines",
+    "dependencies",
+    "devDependencies",
+    "peerDependencies",
+    "peerDependenciesMeta",
+  ])
+    delete rootPackage[field];
+  return normalized;
+}
 try {
   for (const path of [
     "package.json",
@@ -55,7 +73,7 @@ try {
     "fixture",
   ]);
   const base = run("git", ["rev-parse", "HEAD"]).trim();
-  npm(["ci", "--ignore-scripts", "--offline", "--no-audit", "--no-fund"]);
+  npm(["ci", "--omit=dev", "--ignore-scripts", "--offline", "--no-audit", "--no-fund"]);
   const before = json("package.json").version;
   const prePath = join(scratch, ".changeset/pre.json"),
     originalPre = readFileSync(prePath, "utf8");
@@ -88,12 +106,10 @@ try {
   assert.match(after, /^\d+\.\d+\.\d+-experimental\.\d+$/);
   assert.equal(json("package.json").private, true);
   assert.equal(json("package-lock.json").packages[""].version, after);
-  const preparedLock = json("package-lock.json");
-  preparedLock.version = before;
-  preparedLock.packages[""].version = before;
+  const preparedLock = dependencyResolution(json("package-lock.json"));
   assert.deepEqual(
     preparedLock,
-    JSON.parse(readFileSync(join(root, "package-lock.json"), "utf8")),
+    dependencyResolution(JSON.parse(readFileSync(join(root, "package-lock.json"), "utf8"))),
     "version preparation changed dependency resolution",
   );
   assert.ok(readFileSync(join(scratch, "CHANGELOG.md"), "utf8").includes(after));
