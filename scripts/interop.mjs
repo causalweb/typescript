@@ -279,9 +279,9 @@ if (persistentSourceChecked) {
       );
     };
     const deliveryProofValid = (event, proof) => {
-      if (typeof proof !== "string") return false;
+      if (typeof proof !== "string") return "proof is not a string";
       const [header, payload, signature, extra] = proof.split(".");
-      if (!header || !payload || !signature || extra !== undefined) return false;
+      if (!header || !payload || !signature || extra !== undefined) return "proof segments";
       try {
         const protectedHeader = JSON.parse(Buffer.from(header, "base64url").toString("utf8"));
         if (
@@ -290,15 +290,19 @@ if (persistentSourceChecked) {
           protectedHeader?.typ !== "causalweb-demo-delivery+jwt" ||
           Buffer.from(payload, "base64url").toString("utf8") !== JSON.stringify(event)
         )
-          return false;
-        return verify(
-          "sha256",
-          Buffer.from(`${header}.${payload}`),
-          { key: persistentPublicKey, dsaEncoding: "ieee-p1363" },
-          Buffer.from(signature, "base64url"),
-        );
-      } catch {
-        return false;
+          return "header or payload mismatch";
+        if (
+          !verify(
+            "sha256",
+            Buffer.from(`${header}.${payload}`),
+            { key: persistentPublicKey, dsaEncoding: "ieee-p1363" },
+            Buffer.from(signature, "base64url"),
+          )
+        )
+          return "signature mismatch";
+        return null;
+      } catch (error) {
+        return `proof parser: ${error instanceof Error ? error.message : "unknown"}`;
       }
     };
     const deliverRustEvent = async (event, credential = deliveryCredential) => {
@@ -330,8 +334,8 @@ if (persistentSourceChecked) {
           }
           try {
             const delivery = JSON.parse(body);
-            if (!deliveryProofValid(delivery?.event, delivery?.proof))
-              throw new Error("invalid proof");
+            const proofError = deliveryProofValid(delivery?.event, delivery?.proof);
+            if (proofError) throw new Error(proofError);
             const applied = persistentVerifier.verify(delivery.event.evidence, first.subject, 100n);
             const state = JSON.parse(readFileSync(projectionPath, "utf8"));
             if (BigInt(applied.position) !== BigInt(state.frontier) + 1n)
@@ -341,7 +345,10 @@ if (persistentSourceChecked) {
               orders: [...state.orders, delivery.event.order],
             });
             response.writeHead(204).end();
-          } catch {
+          } catch (error) {
+            console.error(
+              `test-only Rust delivery rejected: ${error instanceof Error ? error.message : "unknown"}`,
+            );
             response.writeHead(400).end();
           }
         })();
