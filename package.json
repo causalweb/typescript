@@ -10,8 +10,9 @@
   "exports": { ".": { "types": "./dist/src/index.d.ts", "import": "./dist/src/index.js" } },
   "files": ["dist/src/", "README.md", "CONFORMANCE.md", "SECURITY.md", "LICENSE.md", "LICENSES/", "SPEC_REVISION"],
   "scripts": {
-    "build": "tsc -p tsconfig.json",
-    "test": "npm run build && node --test dist/test/*.test.js"
+    "build": "node scripts/build.mjs",
+    "test": "npm run build && node --test dist/test/*.test.js",
+    "test:package": "npm run build && node scripts/check-package.mjs"
   },
   "dependencies": { "structured-headers": "2.1.1" },
   "devDependencies": { "@types/node": "24.19.2", "typescript": "7.0.2" }

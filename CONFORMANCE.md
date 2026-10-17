@@ -12,7 +12,7 @@ The normative input is draft `0.1.1-experimental`, with exact source and peer pi
 - Real loopback HTTP tests exercise the public client/observer interfaces, reject an unaware 200, avoid cross-origin redirect forwarding, validate failure order, enforce a problem-body limit, and cancel an interrupted exchange.
 - Additional tests cover nested/escaped duplicate names, invalid UTF-8, exact integral NumericDates, Unicode scalar handling, URI syntax without normalization, empty/missing limits, control characters, expiry after reading, and access changes.
 
-Seventeen local test functions currently pass on Windows. The committed CI workflow tests Node.js on Linux and Windows and runs a separate pinned-Rust peer job. A workflow is not evidence that CI passed; refer to the actual run on the reviewed commit.
+Nineteen local test functions pass on Windows, including authorization outages at both checks and runtime-private issuer configuration. A separate package check installs the actual `.tgz` into a temporary application, compiles with strict Node-only types, checks invalid API uses at compile time, and runs stale/covered/denied observations. The committed CI workflow tests Node.js on Linux and Windows and runs a separate pinned-Rust peer job. A workflow is not evidence that CI passed; refer to the actual run on the reviewed commit.
 
 ## Policies and assumptions
 

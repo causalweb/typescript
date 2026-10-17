@@ -79,15 +79,27 @@ export interface ObservationOptions {
   readonly designatedObservation: boolean;
   readonly verifier: Verifier;
   readonly subject: string;
+  /** Current access check, invoked before selection and before response commitment.
+   * False produces 403; a thrown/rejected check produces 503. Log adapter failures
+   * inside the callback; exception messages are never included in the HTTP response. */
   readonly authorize: () => boolean | Promise<boolean>;
   readonly clock: () => bigint;
   readonly read: () => Snapshot<Representation> | Promise<Snapshot<Representation>>;
 }
 
+async function authorizationFailure(authorize: ObservationOptions["authorize"]): Promise<Response | undefined> {
+  try {
+    const allowed = await authorize();
+    if (typeof allowed !== "boolean") return ordinary(503);
+    return allowed ? undefined : ordinary(403);
+  } catch { return ordinary(503); }
+}
+
 /** One attempt; no progress wait. The transport and storage adapters retain their own obligations. */
 export async function observe(options: ObservationOptions): Promise<Response> {
   const { request, target, designatedObservation, verifier, subject, authorize, clock, read } = options;
-  if (!await authorize()) return ordinary(403);
+  const initialDenial = await authorizationFailure(authorize);
+  if (initialDenial) return initialDenial;
   let tokens: string[];
   try {
     if (nominated(request.headers)) throw new ProtocolError("invalid-requirements");
@@ -106,7 +118,8 @@ export async function observe(options: ObservationOptions): Promise<Response> {
     representation = { status: snapshot.representation.status, headers: new Headers(snapshot.representation.headers),
       body: Uint8Array.from(snapshot.representation.body) };
   } catch { return ordinary(503); }
-  if (!await authorize()) return ordinary(403);
+  const currentDenial = await authorizationFailure(authorize);
+  if (currentDenial) return currentDenial;
   let outcomes: (Evaluation & { index: number })[];
   try {
     const now = clock();

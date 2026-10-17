@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { position, serializeContext, Verifier, ProtocolError, DEFAULT_LIMITS } from "../src/index.js";
+import { position, serializeContext, Issuer, Verifier, ProtocolError, DEFAULT_LIMITS } from "../src/index.js";
 import { absoluteUri, httpsIssuer } from "../src/uri.js";
 import { parseObject, integer } from "../src/json.js";
 import { generateKeyPairSync } from "node:crypto";
@@ -36,4 +36,19 @@ test("JSON depth, Unicode scalars, and exact integer magnitude are checked", () 
   assert.equal(integer(object.x, 9007199254740991n), 9007199254740991n);
   assert.throws(() => integer(object.y, 9007199254740991n), ProtocolError);
   assert.equal(object.emoji, "😀");
+});
+
+test("issuer policy and key references are not mutable JavaScript properties", () => {
+  const keys = generateKeyPairSync("ec", { namedCurve: "prime256v1" });
+  const domains = new Set(["urn:test:domain"]);
+  const issuer = new Issuer("https://issuer.example", "test", keys.privateKey, domains, 1000n);
+  domains.clear();
+  assert.deepEqual(Object.keys(issuer), []);
+  assert.ok(Object.isFrozen(issuer));
+  assert.throws(() => Object.assign(issuer, { issuer: "https://attacker.example" }), TypeError);
+  const verifier = new Verifier("audience", [{ issuer: "https://issuer.example", keys: new Map([["test", keys.publicKey]]),
+    domains: new Set(["urn:test:domain"]), maxLifetimeSeconds: 1000n, clockSkewSeconds: 0n }]);
+  const token = issuer.issueCommitted({ subject: "tenant", audiences: ["audience"], domain: "urn:test:domain", position: 0n,
+    issuedAt: 1n, expiresAt: 1000n }, 100n);
+  assert.equal(verifier.verify(token, "tenant", 100n).position, "0");
 });

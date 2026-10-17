@@ -164,3 +164,28 @@ test("structured fields preserve all evidence and reject prohibited forms", () =
   assert.deepEqual(parseContext([serializeContext(tokens)]), tokens);
   assert.deepEqual(parseContext(['"a"', '"b"']), ["a", "b"]);
 });
+
+test("authorization outages fail closed before selection and after a read", async () => {
+  const keys = pair(), consumer = verifier(keys.publicKey);
+  const request = { method: "GET", headers: requestHeaders([rawSign(keys.privateKey, JSON.stringify(claims()))]) };
+  for (const failAt of [1, 2]) {
+    for (const asynchronous of [false, true]) {
+      let checks = 0, reads = 0;
+      const response = await observe({ request, target: TARGET, designatedObservation: true, verifier: consumer, subject: SUBJECT,
+        authorize: () => {
+          if (++checks !== failAt) return true;
+          const failure = new Error("private authorization backend credential");
+          if (asynchronous) return Promise.reject(failure);
+          throw failure;
+        }, clock: () => 100n, read: () => { reads++; return snapshot([5n]); } });
+      assert.equal(response.status, 503);
+      assert.equal(response.headers.has("causal-result"), false);
+      assert.equal(response.headers.get("cache-control"), "no-store");
+      assert.equal(await response.text(), "");
+      assert.equal(reads, failAt === 1 ? 0 : 1);
+    }
+  }
+  const response = await observe({ request, target: TARGET, designatedObservation: true, verifier: consumer, subject: SUBJECT,
+    authorize: (() => "yes") as unknown as () => boolean, clock: () => 100n, read: () => { throw new Error("must not read"); } });
+  assert.equal(response.status, 503);
+});

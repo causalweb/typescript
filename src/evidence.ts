@@ -145,13 +145,19 @@ export interface CommittedEvidenceInput {
 export class Issuer {
   readonly #domains: Set<string>;
   readonly #limits: Readonly<Limits>;
-  constructor(private readonly issuer: string, private readonly kid: string, private readonly key: KeyObject,
-    domains: ReadonlySet<string>, private readonly maxLifetimeSeconds: bigint, limits: Limits = DEFAULT_LIMITS) {
+  readonly #issuer: string;
+  readonly #kid: string;
+  readonly #key: KeyObject;
+  readonly #maxLifetimeSeconds: bigint;
+  constructor(issuer: string, kid: string, key: KeyObject,
+    domains: ReadonlySet<string>, maxLifetimeSeconds: bigint, limits: Limits = DEFAULT_LIMITS) {
     validateLimits(limits);
     if (!httpsIssuer(issuer) || !kid || !p256Key(key, "private") || !domains.size
       || [...domains].some(d => !absoluteUri(d)) || typeof maxLifetimeSeconds !== "bigint"
       || maxLifetimeSeconds <= 0n || maxLifetimeSeconds > MAX_POSITION) throw new ProtocolError("invalid-configuration");
+    this.#issuer = issuer; this.#kid = kid; this.#key = key; this.#maxLifetimeSeconds = maxLifetimeSeconds;
     this.#domains = new Set(domains); this.#limits = Object.freeze({ ...limits });
+    Object.freeze(this);
   }
 
   issueCommitted(input: CommittedEvidenceInput, now: bigint): string {
@@ -159,17 +165,17 @@ export class Issuer {
       || typeof input.issuedAt !== "bigint" || input.issuedAt < 0n || input.issuedAt > MAX_DATE
       || typeof input.expiresAt !== "bigint" || input.expiresAt > MAX_DATE || input.expiresAt <= input.issuedAt
       || typeof now !== "bigint" || now < 0n || input.issuedAt > now || input.expiresAt <= now
-      || input.expiresAt - input.issuedAt > this.maxLifetimeSeconds || !this.#domains.has(input.domain)
+      || input.expiresAt - input.issuedAt > this.#maxLifetimeSeconds || !this.#domains.has(input.domain)
       || typeof input.subject !== "string" || !input.subject || !input.audiences.length
       || input.audiences.some(a => typeof a !== "string" || !a) || new Set(input.audiences).size !== input.audiences.length
       || (input.evidenceId !== undefined && (typeof input.evidenceId !== "string" || !input.evidenceId))) return invalid();
-    const claims = { iss: this.issuer, sub: input.subject, aud: [...input.audiences], iat: Number(input.issuedAt), exp: Number(input.expiresAt),
+    const claims = { iss: this.#issuer, sub: input.subject, aud: [...input.audiences], iat: Number(input.issuedAt), exp: Number(input.expiresAt),
       jti: input.evidenceId ?? `urn:uuid:${randomUUID()}`, [CLAIM]: { v: 1, profile: PROFILE, domain: input.domain, position: input.position.toString(), commit: "stable" } };
-    const header = Buffer.from(JSON.stringify({ alg: "ES256", kid: this.kid, typ: "cw-evidence+jwt" }));
+    const header = Buffer.from(JSON.stringify({ alg: "ES256", kid: this.#kid, typ: "cw-evidence+jwt" }));
     const payload = Buffer.from(JSON.stringify(claims));
     if (header.length + payload.length + 64 > this.#limits.maxDecodedBytes) throw new ProtocolError("too-large");
     const message = `${header.toString("base64url")}.${payload.toString("base64url")}`;
-    const token = `${message}.${sign("sha256", Buffer.from(message), { key: this.key, dsaEncoding: "ieee-p1363" }).toString("base64url")}`;
+    const token = `${message}.${sign("sha256", Buffer.from(message), { key: this.#key, dsaEncoding: "ieee-p1363" }).toString("base64url")}`;
     if (token.length > this.#limits.maxTokenBytes) throw new ProtocolError("too-large");
     return token;
   }

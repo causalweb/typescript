@@ -11,7 +11,10 @@ git clone https://github.com/causalweb/typescript.git
 cd typescript
 npm ci --ignore-scripts
 npm test
+npm run test:package
 ```
+
+The package check builds a real `.tgz`, installs it with its runtime dependency into a temporary application outside this repository, compiles with strict Node-only types, and runs [the consumer example](test/consumer/main.ts). Negative type tests check that callers cannot substitute a JavaScript `number` for a position or an unauthenticated object/string for verified evidence. This is package-consumption evidence, not a registry release or storage-durability test.
 
 The tests exercise all shared fixtures, strict trust/encoding checks, and real loopback HTTP. The HTTP test rejects a stale snapshot, advances test lineage, and confirms the same dependency. It also checks unaware origins, redirects, malformed outcomes, cancellation, and response-size limits. Its lineage is synthetic: it is not a durable multi-service demonstration.
 
@@ -70,5 +73,21 @@ Use `bigint` for positions, NumericDates, lifetime, skew, and the UTC clock. The
 Observers make one attempt and advertise `max_wait_seconds: 0`. `Prefer: wait` is ignored. No carrier reduction is performed: evidence order, duplicate indices, and independent domains are preserved.
 
 Read [CONFORMANCE.md](CONFORMANCE.md), [SECURITY.md](SECURITY.md), and [RELEASING.md](RELEASING.md) before deployment. The Node.js implementation is not yet a browser/WebCrypto package. Discussion belongs in [Causal Web Discussions](https://github.com/orgs/causalweb/discussions).
+
+## Use the source package in an application
+
+Build and pack from this checkout:
+
+```sh
+npm ci --ignore-scripts
+npm run build
+npm pack --ignore-scripts
+```
+
+Install the generated tarball in an existing Node.js 24 ESM application with `npm install /absolute/path/to/the-generated.tgz`, then import from `@causalweb/protocol`. Do not import `dist/src` internals from the installed package. TypeScript applications need their usual TypeScript compiler and Node.js type definitions; the package check verifies them without the DOM library. The complete consumer example covers issuer/verifier setup, a bound snapshot, stale and confirmed responses, and authorization denial. Its source facts are synthetic and must be replaced by an actual storage adapter before use with real guarantees.
+
+`observe` returns ordinary 403 when `authorize` resolves to `false`, and ordinary 503 if that check throws, rejects, or returns a non-boolean JavaScript value. Neither case returns application bytes or a causal marker. Authorization is rechecked after reading. A thrown/rejected read similarly produces an ordinary 503. Log adapter failures in the application's own callback, with its redaction policy; no exception text is put on the wire. A local clock/configuration failure produces an ordinary 500. These responses are distinct from indexed causal failures. The SDK does not install process-wide logging or an HTTP server error handler.
+
+Builds remove only the generated `dist` directory before compilation so deleted or renamed modules do not remain in the package. Issuer configuration and key references use ECMAScript private fields and frozen instances; this prevents accidental mutation/enumeration, not compromise of the Node.js process. No wire or public TypeScript API migration is required by these changes.
 
 Code/tooling: `Apache-2.0 OR MIT`; documentation: `CC-BY-4.0`. See [LICENSE.md](LICENSE.md).
