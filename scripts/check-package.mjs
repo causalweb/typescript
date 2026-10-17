@@ -29,6 +29,10 @@ try {
   for (const required of [
     "dist/src/index.js",
     "dist/src/index.d.ts",
+    "dist/src/node-http.js",
+    "dist/src/node-http.d.ts",
+    "dist/src/fastify.js",
+    "dist/src/fastify.d.ts",
     "CROSS_RUNTIME_DEMO.md",
     "MIGRATION.md",
     "PERSISTENT_DEMO.md",
@@ -56,6 +60,7 @@ try {
       devDependencies: {
         typescript: manifest.devDependencies.typescript,
         "@types/node": manifest.devDependencies["@types/node"],
+        fastify: manifest.devDependencies.fastify,
       },
     }),
   );
@@ -66,6 +71,11 @@ try {
     { cwd: consumer, env: environment, stdio: "inherit" },
   );
   execFileSync(process.execPath, [join(consumer, "dist", "main.js")], {
+    cwd: consumer,
+    env: environment,
+    stdio: "inherit",
+  });
+  execFileSync(process.execPath, [join(consumer, "dist", "fastify.js")], {
     cwd: consumer,
     env: environment,
     stdio: "inherit",

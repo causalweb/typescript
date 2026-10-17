@@ -59,6 +59,43 @@ The application supplies its existing authentication check; evidence does not gr
 
 For causal failures, the helper consumes and validates the bounded problem body and returns it as `result.problem`; `response.body` is then consumed and its reader lock is released. Confirmed response bodies remain available and belong to the caller, who must consume or cancel them. Do not turn an error into an unconstrained retry without an explicit caller decision.
 
+### Node HTTP observer bridge
+
+`handleNodeObservation` is an experimental adapter for an explicit `node:http` route. It reads `IncomingMessage.rawHeaders`, rather than Node's normalized header object, so repeated `Causal-Require` field lines remain distinct before Structured Fields parsing. A request without that field returns `false` and the host keeps normal routing ownership.
+
+```ts
+import { handleNodeObservation } from "@causalweb/protocol";
+
+const handled = await handleNodeObservation(request, response, {
+  target: "/orders/42",
+  designatedObservation: true,
+  verifier,
+  subject: authenticatedUser.id,
+  authorize: () => authenticatedUserMayReadOrder(),
+  clock: () => BigInt(Math.floor(Date.now() / 1000)),
+  read: () => readOneImmutableOrderSnapshotWithTrustedLineage(),
+  onLocalError: error => logger.error({ code: error.code, phase: error.phase }),
+});
+if (!handled) routeOrdinaryRequest(request, response);
+```
+
+The adapter writes every causal response itself. It preserves separate `Set-Cookie` fields, returns safe marker-free ordinary errors for local adapter failures, and does not invoke a normal route after handling a causal request. It cannot make a mutable read into a snapshot: `read` must bind representation bytes and trusted lineage to the same immutable state cut. It also does not supply cancellation, TLS, authorization, or a database transaction. Framework-specific integrations are not yet released.
+
+### Fastify 5 adapter
+
+The optional `@causalweb/protocol/fastify` entry point is tested with Fastify `5.12.7`; applications install a compatible Fastify 5 themselves. It calls `reply.hijack()` only for a causal request, then delegates to the Node bridge using `request.raw` and `reply.raw`. Do not mix it with Fastify response headers or `reply.send()` on that path.
+
+```ts
+import { handleFastifyObservation } from "@causalweb/protocol/fastify";
+
+app.get("/orders/42", async (request, reply) => {
+  if (await handleFastifyObservation(request, reply, observerOptions)) return reply;
+  return reply.send(await ordinaryOrderResponse());
+});
+```
+
+The integration has only loopback test evidence. It is not a Fastify core contribution, an upstream endorsement, a durable projection adapter, or an assurance that application hooks enforce authorization around a causal response.
+
 ## Producer and observer responsibilities
 
 | API | Provides | Does not establish |

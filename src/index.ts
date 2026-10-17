@@ -35,6 +35,13 @@ export {
   serializeContext,
 } from "./http.js";
 export {
+  handleNodeObservation,
+  hasCausalRequirement,
+  headersFromIncoming,
+  type NodeObservationOptions,
+  writeFetchResponse,
+} from "./node-http.js";
+export {
   type Evaluation,
   type Frontier,
   type Mapping,
