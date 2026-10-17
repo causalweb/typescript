@@ -96,6 +96,32 @@ test("SQLite source commits fact and outbox before evidence and recovers a blank
   assert.equal(sourceEvidence.evidence, first.evidence);
   connection.close();
 
+  const interrupted = await fetch(`${origin}/orders/interrupted?interrupt-after-commit`, {
+    method: "POST",
+  });
+  assert.equal(interrupted.status, 500);
+  assert.equal(interrupted.headers.get("causal-context"), null);
+  const committedWithoutEvidence = new DatabaseSync(database);
+  const interruptedFacts = committedWithoutEvidence
+    .prepare("SELECT COUNT(*) AS count FROM source_facts")
+    .get();
+  const blankOutboxRows = committedWithoutEvidence
+    .prepare("SELECT COUNT(*) AS count FROM source_outbox WHERE evidence IS NULL")
+    .get();
+  assert.ok(interruptedFacts);
+  assert.ok(blankOutboxRows);
+  assert.equal(interruptedFacts.count, 2);
+  assert.equal(blankOutboxRows.count, 1);
+  committedWithoutEvidence.close();
+
+  const recoveredAfterInterruption = await (
+    await fetch(`${origin}/recover`, { method: "POST" })
+  ).json();
+  assert.equal(recoveredAfterInterruption.length, 2);
+  const interruptedEvent = recoveredAfterInterruption.at(-1);
+  assert.ok(interruptedEvent);
+  assert.equal(verifier.verify(interruptedEvent.evidence, SUBJECT, 100n).position, "2");
+
   const stopped = new Promise<number | null>((resolveExit) =>
     source.child.once("exit", resolveExit),
   );
@@ -105,10 +131,10 @@ test("SQLite source commits fact and outbox before evidence and recovers a blank
   source = start(database, privateJwk);
   origin = await source.origin;
   const recovered = await (await fetch(`${origin}/recover`, { method: "POST" })).json();
-  assert.equal(recovered.length, 2);
+  assert.equal(recovered.length, 3);
   const recoveredEvent = recovered.at(-1);
   assert.ok(recoveredEvent);
-  assert.equal(verifier.verify(recoveredEvent.evidence, SUBJECT, 100n).position, "2");
+  assert.equal(verifier.verify(recoveredEvent.evidence, SUBJECT, 100n).position, "3");
   const reopened = new DatabaseSync(database);
   const unmaterialized = reopened
     .prepare("SELECT COUNT(*) AS count FROM source_outbox WHERE evidence IS NULL")
