@@ -156,6 +156,12 @@ test("independent SQLite source and observer processes preserve committed causal
   );
   const staleAfterInvalidProof = await constrained(observerOrigin, first.evidence);
   assert.equal(staleAfterInvalidProof.status, 412, await staleAfterInvalidProof.text());
+  assert.equal(
+    (await deliver(observerOrigin, first, credential, "?interrupt-before-commit")).status,
+    400,
+  );
+  const staleAfterInterruptedApply = await constrained(observerOrigin, first.evidence);
+  assert.equal(staleAfterInterruptedApply.status, 412, await staleAfterInterruptedApply.text());
   assert.equal((await deliver(observerOrigin, first, credential)).status, 204);
   const confirmedFirst = await constrained(observerOrigin, first.evidence);
   acceptConfirmation(confirmedFirst, true);

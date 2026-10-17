@@ -162,7 +162,7 @@ function drain(frontier) {
   }
 }
 
-function deliver(deliveryEvent) {
+function deliver(deliveryEvent, interruptBeforeCommit) {
   const evidence = verifier.verify(deliveryEvent.evidence, SUBJECT, now);
   const position = decimal(evidence.position, "verified position");
   const issuedAt = decimal(deliveryEvent.issuedAt, "delivery issued-at");
@@ -213,6 +213,7 @@ function deliver(deliveryEvent) {
         );
     }
     drain(state.frontier);
+    if (interruptBeforeCommit) throw new Error("injected interruption before observer commit");
     database.exec("COMMIT");
   } catch (error) {
     database.exec("ROLLBACK");
@@ -284,7 +285,7 @@ const server = createServer((request, response) => {
         const delivery = JSON.parse(await body(request));
         const deliveryEvent = event(delivery?.event);
         if (!proofValid(deliveryEvent, delivery?.proof)) throw new Error("invalid delivery proof");
-        deliver(deliveryEvent);
+        deliver(deliveryEvent, url.searchParams.has("interrupt-before-commit"));
         if (url.searchParams.has("crash-after-apply")) process.exit(87);
         respond(response, 204);
       } catch (error) {
