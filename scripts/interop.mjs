@@ -1,7 +1,9 @@
 import assert from "node:assert/strict";
-import { execFileSync } from "node:child_process";
+import { execFileSync, spawnSync } from "node:child_process";
 import { createPublicKey, generateKeyPairSync } from "node:crypto";
-import { readFileSync } from "node:fs";
+import { mkdtempSync, readFileSync, rmSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import {
   acceptConfirmation,
   Issuer,
@@ -111,6 +113,110 @@ const invalid = run("verify_fixture", {
 });
 assert.equal(invalid.status, 400);
 assert.equal(invalid.causal_result, null);
+
+const persistentSourceChecked = process.platform !== "win32";
+if (persistentSourceChecked) {
+  const root = mkdtempSync(join(tmpdir(), "causalweb-rust-source-"));
+  try {
+    const { privateKey: persistentPrivateKey, publicKey: persistentPublicKey } =
+      generateKeyPairSync("ec", { namedCurve: "prime256v1" });
+    const privateJwk = persistentPrivateKey.export({ format: "jwk" });
+    assert.equal(typeof privateJwk.d, "string");
+    const persistentEnvironment = {
+      ...process.env,
+      CAUSALWEB_DEMO_PRIVATE_KEY: privateJwk.d,
+    };
+    const state = join(root, "source.json");
+    const persistent = (arguments_) =>
+      JSON.parse(
+        execFileSync(
+          cargo,
+          [
+            "run",
+            "--locked",
+            "--quiet",
+            "--example",
+            "persistent_source",
+            "--",
+            "--state",
+            state,
+            "--now",
+            "100",
+            ...arguments_,
+          ],
+          { cwd: rust, encoding: "utf8", env: persistentEnvironment },
+        ),
+      );
+    const first = persistent(["--order", "first"]);
+    assert.equal(first.test_only, true);
+    assert.equal(first.event.position, 1);
+    assert.equal(first.events.length, 1);
+    const persistentVerifier = new Verifier(first.audience, [
+      {
+        issuer: first.issuer,
+        keys: new Map([[first.kid, persistentPublicKey]]),
+        domains: new Set([first.domain]),
+        maxLifetimeSeconds: 3600n,
+        clockSkewSeconds: 0n,
+      },
+    ]);
+    const firstEvidence = persistentVerifier.verify(first.event.evidence, first.subject, 100n);
+    const persistentCut = (frontier) =>
+      new Snapshot(
+        "/orders",
+        null,
+        "persistent-peer/v1",
+        "orders/v1",
+        new Map([
+          [
+            sourceKey(first.issuer, first.domain),
+            { kind: "relevant", frontiers: [frontier], progressPossible: true },
+          ],
+        ]),
+      );
+    assert.equal(persistentCut(0n).evaluate(firstEvidence, 100n).outcome, "unsatisfied");
+    assert.equal(persistentCut(1n).evaluate(firstEvidence, 100n).outcome, "satisfied");
+
+    const interrupted = spawnSync(
+      cargo,
+      [
+        "run",
+        "--locked",
+        "--quiet",
+        "--example",
+        "persistent_source",
+        "--",
+        "--state",
+        state,
+        "--now",
+        "100",
+        "--order",
+        "recovered",
+        "--interrupt-after-commit",
+      ],
+      { cwd: rust, encoding: "utf8", env: persistentEnvironment },
+    );
+    assert.notEqual(interrupted.status, 0, "injected interruption unexpectedly succeeded");
+    assert.match(interrupted.stderr, /interruption after durable source commit/);
+    const recovered = persistent(["--recover"]);
+    assert.equal(recovered.events.length, 2);
+    const recoveredEvent = recovered.events.at(-1);
+    assert.ok(recoveredEvent?.evidence, "recovery did not issue outbox evidence");
+    const recoveredEvidence = persistentVerifier.verify(
+      recoveredEvent.evidence,
+      first.subject,
+      100n,
+    );
+    assert.equal(persistentCut(1n).evaluate(recoveredEvidence, 100n).outcome, "unsatisfied");
+    assert.equal(persistentCut(2n).evaluate(recoveredEvidence, 100n).outcome, "satisfied");
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+}
 console.log(
-  "Rust -> TypeScript and TypeScript -> Rust signed evidence and HTTP field compatibility passed; stale, expired, forged, and tenant-mismatched requests fail closed (synthetic snapshots, not durable service integration)",
+  `Rust -> TypeScript and TypeScript -> Rust signed evidence and HTTP field compatibility passed; stale, expired, forged, and tenant-mismatched requests fail closed.${
+    persistentSourceChecked
+      ? " TypeScript also verifies evidence issued and recovered from Rust's test-only local source outbox (not a durable service deployment)."
+      : " The POSIX-only persistent-source fixture is not run on this platform."
+  }`,
 );
