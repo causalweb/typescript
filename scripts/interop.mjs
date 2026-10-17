@@ -571,6 +571,30 @@ if (persistentSourceChecked) {
     if (failedAfterRestart.kind === "causal-failure")
       assert.equal(failedAfterRestart.problem.outcomes[0].outcome, "failed");
 
+    const unknown = await (
+      await fetch(`${sourceOrigin}/orders/unknown`, { method: "POST" })
+    ).json();
+    assert.equal(await deliver(observerOrigin, unknown, "/unknown"), 204);
+    const unknownResult = await fetchObservation(`${observerOrigin}/orders`, [unknown.evidence], {
+      authenticated: () => true,
+    });
+    assert.equal(unknownResult.kind, "causal-failure");
+    if (unknownResult.kind === "causal-failure")
+      assert.equal(unknownResult.problem.outcomes[0].outcome, "unknown");
+
+    await stop(observer, observerOrigin);
+    observerOrigin = await startObserver();
+    const unknownAfterRestart = await fetchObservation(
+      `${observerOrigin}/orders`,
+      [unknown.evidence],
+      {
+        authenticated: () => true,
+      },
+    );
+    assert.equal(unknownAfterRestart.kind, "causal-failure");
+    if (unknownAfterRestart.kind === "causal-failure")
+      assert.equal(unknownAfterRestart.problem.outcomes[0].outcome, "unknown");
+
     await stop(source, sourceOrigin);
     await stop(observer, observerOrigin);
   } finally {
