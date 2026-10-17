@@ -30,6 +30,7 @@ try {
     "dist/src/index.js",
     "dist/src/index.d.ts",
     "MIGRATION.md",
+    "PERSISTENT_DEMO.md",
     "CHANGELOG.md",
     "LICENSE.md",
   ])
