@@ -8,6 +8,7 @@ import {
   PROFILE,
   parseContext,
   position,
+  retainedContextIndices,
   Snapshot,
   sourceKey,
   Verifier,
@@ -173,6 +174,63 @@ function prefixResult(input) {
     id: testCase.id,
     outcomes,
     aggregate_success: outcomes.every((outcome) => outcome.outcome === "satisfied"),
+  };
+}
+
+function contextReductionResult(input) {
+  const vector = input.vector;
+  const testCase = input.case;
+  const issuer = "https://issuer.example";
+  const audience = "https://verifier.example/causal";
+  const subject = "opaque-tenant";
+  if (
+    input.version !== 1 ||
+    input.profile !== "context-reduction-v1" ||
+    !vector ||
+    typeof vector.domain_a !== "string" ||
+    typeof vector.domain_b !== "string" ||
+    !testCase ||
+    testCase.kind !== "context-reduction" ||
+    !Array.isArray(testCase.evidence) ||
+    !Number.isSafeInteger(testCase.required_usable_until)
+  )
+    throw new Error("invalid context-reduction conformance input");
+  const { privateKey, publicKey } = generateKeyPairSync("ec", { namedCurve: "prime256v1" });
+  const verifier = new Verifier(audience, [
+    {
+      issuer,
+      keys: new Map([["prefix-conformance", publicKey]]),
+      domains: new Set([vector.domain_a, vector.domain_b]),
+      maxLifetimeSeconds: 86400n,
+      clockSkewSeconds: 0n,
+    },
+  ]);
+  const now = BigInt(vector.assumptions?.validation_time ?? 100);
+  const evidence = testCase.evidence.map((item, index) => {
+    const domain = vector[item.domain];
+    if (
+      typeof domain !== "string" ||
+      typeof item.position !== "string" ||
+      !Number.isSafeInteger(item.exp)
+    )
+      throw new Error("invalid context-reduction evidence");
+    return verifier.verify(
+      signedEvidence(privateKey, {
+        iss: issuer,
+        sub: subject,
+        aud: audience,
+        iat: 1,
+        exp: item.exp,
+        jti: `urn:context-reduction:${testCase.id}:${index}`,
+        [CLAIM]: { v: 1, profile: PROFILE, domain, position: item.position, commit: "stable" },
+      }),
+      subject,
+      now,
+    );
+  });
+  return {
+    id: testCase.id,
+    retained_indices: retainedContextIndices(evidence, now, BigInt(testCase.required_usable_until)),
   };
 }
 
@@ -384,9 +442,11 @@ process.stdin.on("end", async () => {
         ? evidenceResult(input)
         : input.profile === "prefix-evaluation-v1"
           ? prefixResult(input)
-          : input.profile === "http-client-confirmation-v1"
-            ? httpResult(input)
-            : await observerResult(input);
+          : input.profile === "context-reduction-v1"
+            ? contextReductionResult(input)
+            : input.profile === "http-client-confirmation-v1"
+              ? httpResult(input)
+              : await observerResult(input);
     process.stdout.write(`${JSON.stringify(response)}\n`);
   } catch (error) {
     process.stderr.write(`${error instanceof Error ? error.message : String(error)}\n`);
