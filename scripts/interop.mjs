@@ -3,13 +3,13 @@ import { execFileSync } from "node:child_process";
 import { createPublicKey, generateKeyPairSync } from "node:crypto";
 import { readFileSync } from "node:fs";
 import {
-  Issuer,
-  Verifier,
-  Snapshot,
-  sourceKey,
-  parseContext,
-  serializeContext,
   acceptConfirmation,
+  Issuer,
+  parseContext,
+  Snapshot,
+  serializeContext,
+  sourceKey,
+  Verifier,
 } from "../dist/src/index.js";
 
 const rust = process.argv[2];

@@ -1,6 +1,6 @@
 import { KeyObject, randomUUID, sign, verify } from "node:crypto";
-import { ProtocolError, invalid } from "./error.js";
-import { integer, nonempty, object, parseObject, type JsonObject } from "./json.js";
+import { invalid, ProtocolError } from "./error.js";
+import { integer, type JsonObject, nonempty, object, parseObject } from "./json.js";
 import { absoluteUri, httpsIssuer } from "./uri.js";
 
 export const PROFILE = "https://github.com/causalweb/spec/profiles/prefix-01";

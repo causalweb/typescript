@@ -1,16 +1,16 @@
 import assert from "node:assert/strict";
-import { test } from "node:test";
-import { createServer, type Server } from "node:http";
 import { generateKeyPairSync } from "node:crypto";
+import { createServer, type Server } from "node:http";
+import { test } from "node:test";
 import {
+  fetchObservation,
   Issuer,
-  Verifier,
+  ObservationError,
+  observe,
+  type Representation,
   Snapshot,
   sourceKey,
-  observe,
-  fetchObservation,
-  ObservationError,
-  type Representation,
+  Verifier,
 } from "../src/index.js";
 
 const testAuthentication = { authenticated: () => true };
@@ -47,8 +47,13 @@ test("real loopback HTTP enforces dependencies and safely converts local adapter
   const server = createServer((req, res) => {
     let checks = 0;
     const headers = new Headers();
-    for (let i = 0; i < req.rawHeaders.length; i += 2)
-      headers.append(req.rawHeaders[i]!, req.rawHeaders[i + 1]!);
+    for (let i = 0; i < req.rawHeaders.length; i += 2) {
+      const name = req.rawHeaders[i],
+        value = req.rawHeaders[i + 1];
+      assert.ok(typeof name === "string");
+      assert.ok(typeof value === "string");
+      headers.append(name, value);
+    }
     void observe({
       request: { method: req.method ?? "GET", headers },
       target: "/view",

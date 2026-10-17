@@ -58,7 +58,7 @@ export function absoluteUri(value: string): boolean {
 
 export function httpsIssuer(value: string): boolean {
   if (!/^https:\/\//i.test(value) || !absoluteUri(value)) return false;
-  const authority = value.slice(8).split(/[/?#]/, 1)[0]!;
+  const [authority = ""] = value.slice(8).split(/[/?#]/, 1);
   const host = authority.slice(authority.lastIndexOf("@") + 1);
   return host.length > 0 && !host.startsWith(":");
 }

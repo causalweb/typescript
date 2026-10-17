@@ -4,6 +4,8 @@ The [specification](https://github.com/causalweb/spec) defines behavior. Normati
 
 Run `npm ci --ignore-scripts`, `npm test`, `node scripts/check-spec.mjs PATH_TO_SPEC`, and `npm audit`. Peer changes also run `node scripts/interop.mjs PATH_TO_PINNED_RUST`. Fixtures remain byte-identical to `SPEC_REVISION`; update source/peer pins and CI together when compatibility changes.
 
+Run `npm run check` for the pinned Biome formatter/linter and import-order checks. Warnings fail the check. `npm run format` applies formatting only; review lint fixes separately. `npm run format:check` and `npm run lint` are available for focused checks. CI runs the combined check on Linux and Windows; `npm test` separately runs the strict TypeScript compiler and behavior tests. Vendored vectors, generated lockfiles/build output, and nested checkouts are excluded from formatting. Do not normalize fixture bytes or suppress a rule to conceal a trust-boundary defect.
+
 New behavior needs positive and adverse tests, including malformed input, trust boundaries, expiry, stale state, and ordinary access denial. A storage adapter needs a documented source/projection contract and crash-injection evidence before claiming a deployment conformance class.
 
 Use the [Changesets workflow](.changeset/README.md): each PR adds a new changeset, or an explained empty note when no SDK release is needed. Run `npm run changeset`, `npm run release:check`, and `npm run test:release`. CI checks notes relative to the PR base. New release notes belong in `.changeset/`, not handwritten version entries in `CHANGELOG.md`. Version preparation is separate from publishing or protocol maturity.

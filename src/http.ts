@@ -1,8 +1,8 @@
 import { parseItem, parseList, serializeList, Token } from "structured-headers";
-import { ObservationError, ProtocolError, type ObservationPhase } from "./error.js";
-import { DEFAULT_LIMITS, PROFILE, Verifier, validateLimits, type Limits } from "./evidence.js";
+import { ObservationError, type ObservationPhase, ProtocolError } from "./error.js";
+import { DEFAULT_LIMITS, type Limits, PROFILE, type Verifier, validateLimits } from "./evidence.js";
 import { integer, nonempty, object, parseObject } from "./json.js";
-import { Snapshot, type Evaluation, type Outcome } from "./prefix.js";
+import { type Evaluation, type Outcome, Snapshot } from "./prefix.js";
 
 export function parseContext(lines: readonly string[], limits: Limits = DEFAULT_LIMITS): string[] {
   validateLimits(limits);
@@ -368,7 +368,9 @@ export async function fetchObservation(
   if (typeof options.authenticated !== "function") throw new ProtocolError("invalid-configuration");
   const init = options.request ?? {};
   const headers = new Headers(init.headers);
-  requestHeaders(tokens).forEach((value, name) => headers.set(name, value));
+  requestHeaders(tokens).forEach((value, name) => {
+    headers.set(name, value);
+  });
   const signals = [AbortSignal.timeout(10000)];
   if (init.signal) signals.push(init.signal);
   const response = await fetch(input, {

@@ -1,27 +1,26 @@
 import assert from "node:assert/strict";
-import { test } from "node:test";
-import { readFileSync } from "node:fs";
 import { createPublicKey, generateKeyPairSync, sign } from "node:crypto";
+import { test } from "node:test";
 import {
-  CLAIM,
-  PROFILE,
-  Verifier,
-  Issuer,
-  DEFAULT_LIMITS,
-  ProtocolError,
-  ObservationError,
-  Snapshot,
-  sourceKey,
-  position,
-  parseContext,
-  serializeContext,
   acceptConfirmation,
-  observe,
-  requestHeaders,
+  CLAIM,
   type Frontier,
+  Issuer,
   type Mapping,
+  ObservationError,
+  observe,
+  PROFILE,
+  ProtocolError,
+  parseContext,
+  position,
   type Representation,
+  requestHeaders,
+  Snapshot,
+  serializeContext,
+  sourceKey,
+  Verifier,
 } from "../src/index.js";
+import { fixture } from "./fixtures.js";
 
 const ISSUER = "https://issuer.example",
   DOMAIN = `${ISSUER}/domains/a`,
@@ -29,9 +28,7 @@ const ISSUER = "https://issuer.example",
 const SUBJECT = "opaque-tenant",
   AUDIENCE = "https://verifier.example/causal",
   TARGET = "/orders/123";
-// Fixture metadata is repository-owned; wire bytes are validated by the implementation under test.
-const fixture = (name: string): any => JSON.parse(readFileSync(`test/vectors/${name}`, "utf8"));
-const claims = (p = "5"): any => ({
+const claims = (p = "5") => ({
   iss: ISSUER,
   sub: SUBJECT,
   aud: AUDIENCE,
@@ -126,19 +123,27 @@ test("all twenty pinned prefix/composition fixtures", () => {
     keys = pair(),
     consumer = verifier(keys.publicKey);
   assert.equal(vectors.cases.length, 20);
-  const frontier = (v: any): Frontier => (v === null ? null : position(v));
+  const frontier = (v: string | null | undefined): Frontier => {
+    if (v === null) return null;
+    assert.ok(typeof v === "string", "fixture frontier must be a position or bottom");
+    return position(v);
+  };
   for (const entry of vectors.cases) {
-    if (entry.kind?.startsWith("position-validation")) {
-      if (entry.expected === "reject-request")
-        assert.throws(() => position(entry.position), ProtocolError, entry.id);
-      else assert.ok(position(entry.frontier) >= position(entry.position), entry.id);
+    if (entry.kind === "position-validation") {
+      assert.equal(entry.expected, "reject-request");
+      assert.throws(() => position(entry.position), ProtocolError, entry.id);
+      continue;
+    }
+    if (entry.kind === "position-validation-and-comparison") {
+      assert.equal(entry.expected, "satisfied");
+      assert.ok(position(entry.frontier) >= position(entry.position), entry.id);
       continue;
     }
     if (entry.kind === "context-reduction") {
-      const retained = entry.evidence.map((e: any) => e.position);
+      const retained = entry.evidence.map((e) => e.position);
       assert.ok(
         entry.allowed_retained_positions.some(
-          (allowed: any) => JSON.stringify(allowed) === JSON.stringify(retained),
+          (allowed) => JSON.stringify(allowed) === JSON.stringify(retained),
         ),
         entry.id,
       );
@@ -172,8 +177,8 @@ test("all twenty pinned prefix/composition fixtures", () => {
                 ? [frontier(all[alias])]
                 : ["unknown"]);
           const failures = (state.terminal_failures ?? [])
-            .filter((f: any) => f.domain === alias)
-            .map((f: any) => position(f.position)) as bigint[];
+            .filter((f) => f.domain === alias)
+            .map((f) => position(f.position));
           const failure = failures.sort((a, b) => (a < b ? -1 : a > b ? 1 : 0))[0];
           lineage.set(sourceKey(ISSUER, domain), {
             kind: "relevant",
@@ -222,8 +227,8 @@ test("all twelve pinned HTTP response fixtures", () => {
     );
     if (entry.client_accepts_causal_confirmation !== undefined)
       assert.equal(confirmed, entry.client_accepts_causal_confirmation, entry.id);
-    if (entry.request?.causal_require)
-      assert.throws(() => parseContext([entry.request.causal_require]), ProtocolError);
+    const requireField = entry.request?.causal_require;
+    if (requireField) assert.throws(() => parseContext([requireField]), ProtocolError);
     if (entry.id === "HTTP-008")
       assert.throws(() => parseContext([Array(17).fill('"x"').join(", ")]), { code: "too-large" });
   }
@@ -324,13 +329,13 @@ test("unauthorized and invalid evidence never selects state", async () => {
   for (const [token, subject] of [
     ["not-a-jws", SUBJECT],
     [rawSign(keys.privateKey, JSON.stringify(claims())), "another-tenant"],
-  ]) {
+  ] as const) {
     const response = await observe({
-      request: { method: "GET", headers: requestHeaders([token!]) },
+      request: { method: "GET", headers: requestHeaders([token]) },
       target: TARGET,
       designatedObservation: true,
       verifier: consumer,
-      subject: subject!,
+      subject,
       authorize: () => true,
       clock: () => 100n,
       read: () => {

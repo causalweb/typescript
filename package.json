@@ -4,12 +4,36 @@
   "private": true,
   "type": "module",
   "description": "Independent experimental Causal Web implementation for Node.js",
-  "repository": { "type": "git", "url": "https://github.com/causalweb/typescript.git" },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/causalweb/typescript.git"
+  },
   "license": "Apache-2.0 OR MIT",
-  "engines": { "node": ">=24" },
-  "exports": { ".": { "types": "./dist/src/index.d.ts", "import": "./dist/src/index.js" } },
-  "files": ["dist/src/", "README.md", "CHANGELOG.md", "MIGRATION.md", "CONFORMANCE.md", "SECURITY.md", "LICENSE.md", "LICENSES/", "SPEC_REVISION"],
+  "engines": {
+    "node": ">=24"
+  },
+  "exports": {
+    ".": {
+      "types": "./dist/src/index.d.ts",
+      "import": "./dist/src/index.js"
+    }
+  },
+  "files": [
+    "dist/src/",
+    "README.md",
+    "CHANGELOG.md",
+    "MIGRATION.md",
+    "CONFORMANCE.md",
+    "SECURITY.md",
+    "LICENSE.md",
+    "LICENSES/",
+    "SPEC_REVISION"
+  ],
   "scripts": {
+    "format": "biome format --write .",
+    "format:check": "biome format .",
+    "lint": "biome lint --error-on-warnings .",
+    "check": "biome ci --error-on-warnings .",
     "build": "node scripts/build.mjs",
     "test": "npm run build && node --test dist/test/*.test.js",
     "test:package": "npm run build && node scripts/check-package.mjs",
@@ -19,6 +43,13 @@
     "version:prepare": "node scripts/release.mjs prepare",
     "test:release": "node scripts/check-release.mjs"
   },
-  "dependencies": { "structured-headers": "2.1.1" },
-  "devDependencies": { "@changesets/cli": "3.0.3", "@types/node": "24.19.2", "typescript": "7.0.2" }
+  "dependencies": {
+    "structured-headers": "2.1.1"
+  },
+  "devDependencies": {
+    "@biomejs/biome": "2.5.15",
+    "@changesets/cli": "3.0.3",
+    "@types/node": "24.19.2",
+    "typescript": "7.0.2"
+  }
 }

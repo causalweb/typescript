@@ -28,6 +28,7 @@ jobs:
         with:
           node-version: '24'
       - run: npm ci --ignore-scripts
+      - run: npm run check
       - run: npm test
       - run: node scripts/check-spec.mjs .spec
       - run: npm audit --audit-level=high
@@ -51,7 +52,7 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           repository: causalweb/rust
-          ref: 13798eefe8de8ff66e749cab5b5511d093ae4af1
+          ref: 6d1d4a93ed7da10543f696d0b49c876a0e6b12d2
           path: .rust
           persist-credentials: false
       - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0

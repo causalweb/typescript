@@ -137,8 +137,8 @@ export function nonempty(value: Json | undefined): string {
 export function integer(value: Json | undefined, maximum: bigint): bigint {
   if (!(value instanceof Decimal)) return invalid();
   const match = /^(-?)([0-9]+)(?:\.([0-9]+))?(?:[eE]([+-]?[0-9]+))?$/.exec(value.text);
-  if (!match) return invalid();
-  let digits = (match[2]! + (match[3] ?? "")).replace(/^0+/, "");
+  if (!match || match[2] === undefined) return invalid();
+  let digits = (match[2] + (match[3] ?? "")).replace(/^0+/, "");
   if (!digits) return 0n;
   if (match[1] === "-") return invalid();
   const exponent = BigInt(match[4] ?? "0") - BigInt((match[3] ?? "").length);

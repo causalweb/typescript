@@ -10,7 +10,7 @@ const scratch = mkdtempSync(join(tmpdir(), "causalweb-npm-consumer-"));
 const manifest = JSON.parse(readFileSync(join(root, "package.json"), "utf8"));
 // Run npm's JS entry point directly so Windows does not need a shell for .cmd files.
 const npmCli = process.env.npm_execpath;
-assert.ok(npmCli && npmCli.endsWith("npm-cli.js"), "run with npm run test:package");
+assert.ok(npmCli?.endsWith("npm-cli.js"), "run with npm run test:package");
 const environment = { ...process.env };
 delete environment.NODE_PATH;
 function npm(args, cwd, capture = false) {

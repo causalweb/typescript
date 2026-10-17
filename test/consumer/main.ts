@@ -1,16 +1,16 @@
 import assert from "node:assert/strict";
 import { generateKeyPairSync } from "node:crypto";
 import {
+  acceptConfirmation,
   Issuer,
-  Verifier,
+  ObservationError,
+  observe,
+  ProtocolError,
+  type Representation,
+  requestHeaders,
   Snapshot,
   sourceKey,
-  observe,
-  requestHeaders,
-  acceptConfirmation,
-  ProtocolError,
-  ObservationError,
-  type Representation,
+  Verifier,
 } from "@causalweb/protocol";
 
 // Synthetic SDK exercise. This does not establish source durability or recovery.

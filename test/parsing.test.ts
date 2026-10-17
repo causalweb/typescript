@@ -1,16 +1,16 @@
 import assert from "node:assert/strict";
+import { generateKeyPairSync } from "node:crypto";
 import { test } from "node:test";
 import {
+  DEFAULT_LIMITS,
+  Issuer,
+  ProtocolError,
   position,
   serializeContext,
-  Issuer,
   Verifier,
-  ProtocolError,
-  DEFAULT_LIMITS,
 } from "../src/index.js";
+import { integer, parseObject } from "../src/json.js";
 import { absoluteUri, httpsIssuer } from "../src/uri.js";
-import { parseObject, integer } from "../src/json.js";
-import { generateKeyPairSync } from "node:crypto";
 
 test("positions and URIs reject control and Unicode line terminators", () => {
   for (const suffix of ["\n", "\r", "\r\n", "\u2028", "\u2029", " ", "\t", "\0"]) {
