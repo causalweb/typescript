@@ -2,7 +2,9 @@
 // It is not a package API, delivery protocol, or production storage adapter.
 
 import { createPublicKey, verify } from "node:crypto";
+import { readFileSync } from "node:fs";
 import { createServer } from "node:http";
+import { createServer as createHttpsServer } from "node:https";
 import { DatabaseSync } from "node:sqlite";
 import { isDeepStrictEqual } from "node:util";
 
@@ -24,9 +26,23 @@ function argument(name) {
   return process.argv[index + 1];
 }
 
+function optionalArgument(name) {
+  const index = process.argv.indexOf(name);
+  if (index < 0) return undefined;
+  if (!process.argv[index + 1]) throw new Error(`${name} requires a value`);
+  return process.argv[index + 1];
+}
+
 const databasePath = argument("--database");
 const now = BigInt(argument("--now"));
 const bind = argument("--listen");
+const tlsKeyPath = optionalArgument("--tls-key");
+const tlsCertificatePath = optionalArgument("--tls-cert");
+if (Boolean(tlsKeyPath) !== Boolean(tlsCertificatePath))
+  throw new Error("--tls-key and --tls-cert must be supplied together");
+const tls = tlsKeyPath
+  ? { key: readFileSync(tlsKeyPath), cert: readFileSync(tlsCertificatePath) }
+  : undefined;
 const publicJwk = JSON.parse(process.env.CAUSALWEB_DEMO_PUBLIC_JWK ?? "");
 const credential = process.env.CAUSALWEB_DEMO_DELIVERY_CREDENTIAL;
 if (typeof credential !== "string" || !credential)
@@ -268,7 +284,7 @@ function respond(response, status, body) {
   response.end(body === undefined ? undefined : JSON.stringify(body));
 }
 
-const server = createServer((request, response) => {
+const handler = (request, response) => {
   void (async () => {
     const url = new URL(request.url ?? "/", "http://localhost");
     if (request.method === "POST" && url.pathname === "/shutdown") {
@@ -317,10 +333,11 @@ const server = createServer((request, response) => {
   })().catch(() => {
     if (!response.headersSent) respond(response, 500);
   });
-});
+};
+const server = tls ? createHttpsServer(tls, handler) : createServer(handler);
 
 server.listen(bind, "127.0.0.1", () => {
   const address = server.address();
   if (!address || typeof address === "string") throw new Error("unexpected listener address");
-  process.stdout.write(`http://127.0.0.1:${address.port}\n`);
+  process.stdout.write(`${tls ? "https" : "http"}://127.0.0.1:${address.port}\n`);
 });

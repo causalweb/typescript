@@ -1,7 +1,8 @@
 import assert from "node:assert/strict";
 import { spawn } from "node:child_process";
 import { generateKeyPairSync } from "node:crypto";
-import { mkdtemp, rm } from "node:fs/promises";
+import { mkdtemp, readFile, rm } from "node:fs/promises";
+import { request as httpsRequest } from "node:https";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { test } from "node:test";
@@ -12,6 +13,8 @@ type StartedService = Readonly<{
   child: ReturnType<typeof spawn>;
   origin: Promise<string>;
 }>;
+type TlsFixture = Readonly<{ key: string; certificate: string }>;
+type SecureResponse = Readonly<{ status: number; body: Buffer }>;
 type SourceEvent = Readonly<{
   id: string;
   position: string;
@@ -38,12 +41,19 @@ function sourceEvent(value: unknown): SourceEvent {
   return event as unknown as SourceEvent;
 }
 
-function start(script: string, database: string, environment: NodeJS.ProcessEnv): StartedService {
-  const child = spawn(
-    process.execPath,
-    [script, "--database", database, "--now", "100", "--listen", "0"],
-    { cwd: process.cwd(), env: environment, stdio: ["ignore", "pipe", "pipe"] },
-  );
+function start(
+  script: string,
+  database: string,
+  environment: NodeJS.ProcessEnv,
+  tls?: TlsFixture,
+): StartedService {
+  const arguments_ = [script, "--database", database, "--now", "100", "--listen", "0"];
+  if (tls) arguments_.push("--tls-key", tls.key, "--tls-cert", tls.certificate);
+  const child = spawn(process.execPath, arguments_, {
+    cwd: process.cwd(),
+    env: environment,
+    stdio: ["ignore", "pipe", "pipe"],
+  });
   assert.ok(child.stdout);
   return {
     child,
@@ -57,7 +67,7 @@ function start(script: string, database: string, environment: NodeJS.ProcessEnv)
       child.stdout.on("data", (chunk: string) => {
         output += chunk;
         const [line] = output.split("\n");
-        if (!line?.startsWith("http://")) return;
+        if (!line?.startsWith(tls ? "https://" : "http://")) return;
         child.off("exit", rejectEarlyExit);
         resolveOrigin(line.trim());
       });
@@ -65,10 +75,40 @@ function start(script: string, database: string, environment: NodeJS.ProcessEnv)
   };
 }
 
+async function secureRequest(
+  origin: string,
+  path: string,
+  method: string,
+  headers: Record<string, string>,
+  certificate?: Buffer,
+  body?: string,
+): Promise<SecureResponse> {
+  return new Promise((resolveResponse, rejectResponse) => {
+    const request = httpsRequest(
+      `${origin}${path}`,
+      { method, headers, ca: certificate },
+      (response) => {
+        const chunks: Buffer[] = [];
+        response.on("data", (chunk: Buffer) => chunks.push(chunk));
+        response.once("error", rejectResponse);
+        response.once("end", () =>
+          resolveResponse({ status: response.statusCode ?? 0, body: Buffer.concat(chunks) }),
+        );
+      },
+    );
+    request.once("error", rejectResponse);
+    request.end(body);
+  });
+}
+
 async function stop(service: StartedService, origin: string): Promise<void> {
+  const stopped =
+    service.child.exitCode === null
+      ? new Promise<void>((resolveExit) => service.child.once("exit", () => resolveExit()))
+      : Promise.resolve();
   const response = await fetch(`${origin}/shutdown`, { method: "POST" });
   assert.equal(response.status, 204);
-  await new Promise<void>((resolveExit) => service.child.once("exit", () => resolveExit()));
+  await stopped;
 }
 
 async function issue(sourceOrigin: string, order: string): Promise<SourceEvent> {
@@ -100,6 +140,77 @@ async function deliver(
 async function constrained(observerOrigin: string, evidence: string): Promise<Response> {
   return fetch(`${observerOrigin}/orders`, { headers: requestHeaders([evidence]) });
 }
+
+test("SQLite observer TLS requires its explicit test trust anchor", async (context) => {
+  const root = await mkdtemp(join(tmpdir(), "causalweb-sqlite-tls-"));
+  const sourceDatabase = join(root, "source.sqlite");
+  const observerDatabase = join(root, "observer.sqlite");
+  const fixture = {
+    key: resolve("test/fixtures/localhost-key.pem"),
+    certificate: resolve("test/fixtures/localhost-cert.pem"),
+  };
+  const certificate = await readFile(fixture.certificate);
+  const { privateKey, publicKey } = generateKeyPairSync("ec", { namedCurve: "prime256v1" });
+  const credential = "tls-test-delivery-credential";
+  const source = start("scripts/sqlite-source-service.mjs", sourceDatabase, {
+    ...process.env,
+    CAUSALWEB_DEMO_PRIVATE_JWK: JSON.stringify(privateKey.export({ format: "jwk" })),
+  });
+  const observer = start(
+    "scripts/sqlite-observer-service.mjs",
+    observerDatabase,
+    {
+      ...process.env,
+      CAUSALWEB_DEMO_PUBLIC_JWK: JSON.stringify(publicKey.export({ format: "jwk" })),
+      CAUSALWEB_DEMO_DELIVERY_CREDENTIAL: credential,
+    },
+    fixture,
+  );
+  const sourceOrigin = await source.origin;
+  const observerOrigin = await observer.origin;
+  context.after(async () => {
+    if (source.child.exitCode === null) await stop(source, sourceOrigin);
+    if (observer.child.exitCode === null) {
+      const stopped = new Promise<void>((resolveExit) =>
+        observer.child.once("exit", () => resolveExit()),
+      );
+      const response = await secureRequest(observerOrigin, "/shutdown", "POST", {}, certificate);
+      assert.equal(response.status, 204);
+      await stopped;
+    }
+    assert.equal(resolve(root, ".."), resolve(tmpdir()));
+    assert.ok(root.startsWith(join(resolve(tmpdir()), "causalweb-sqlite-tls-")));
+    await rm(root, { recursive: true, force: true });
+  });
+
+  await assert.rejects(secureRequest(observerOrigin, "/orders", "GET", {}));
+  const issued = await issue(sourceOrigin, "tls-first");
+  const requireHeaders = Object.fromEntries(requestHeaders([issued.evidence]));
+  const stale = await secureRequest(observerOrigin, "/orders", "GET", requireHeaders, certificate);
+  assert.equal(stale.status, 412);
+  const { deliveryProof, ...event } = issued;
+  const delivered = await secureRequest(
+    observerOrigin,
+    "/deliver",
+    "POST",
+    { authorization: `Bearer ${credential}`, "content-type": "application/json" },
+    certificate,
+    JSON.stringify({ event, proof: deliveryProof }),
+  );
+  assert.equal(delivered.status, 204);
+  const confirmed = await secureRequest(
+    observerOrigin,
+    "/orders",
+    "GET",
+    requireHeaders,
+    certificate,
+  );
+  assert.equal(confirmed.status, 200);
+  assert.deepEqual(JSON.parse(confirmed.body.toString("utf8")), {
+    orders: ["tls-first"],
+    frontier: "1",
+  });
+});
 
 test("independent SQLite source and observer processes preserve committed causal cuts", async (context) => {
   const root = await mkdtemp(join(tmpdir(), "causalweb-sqlite-cross-process-"));
