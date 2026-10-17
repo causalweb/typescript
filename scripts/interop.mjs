@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { execFileSync, spawn, spawnSync } from "node:child_process";
-import { createPublicKey, generateKeyPairSync } from "node:crypto";
+import { createPublicKey, generateKeyPairSync, randomBytes } from "node:crypto";
 import { mkdtempSync, readFileSync, renameSync, rmSync, writeFileSync } from "node:fs";
 import { createServer } from "node:http";
 import { tmpdir } from "node:os";
@@ -351,6 +351,7 @@ if (persistentSourceChecked) {
     const { privateKey, publicKey } = generateKeyPairSync("ec", { namedCurve: "prime256v1" });
     const privateJwk = privateKey.export({ format: "jwk" });
     const publicJwk = publicKey.export({ format: "jwk" });
+    const deliveryCredential = randomBytes(32).toString("base64url");
     const sourceEnvironment = {
       ...process.env,
       CAUSALWEB_DEMO_PRIVATE_JWK: JSON.stringify(privateJwk),
@@ -358,6 +359,7 @@ if (persistentSourceChecked) {
     const observerEnvironment = {
       ...process.env,
       CAUSALWEB_DEMO_PUBLIC_JWK: JSON.stringify(publicJwk),
+      CAUSALWEB_DEMO_DELIVERY_CREDENTIAL: deliveryCredential,
     };
     const waitForOrigin = (child, name) =>
       new Promise((resolve, reject) => {
@@ -413,10 +415,13 @@ if (persistentSourceChecked) {
       );
       return waitForOrigin(observer, "Rust observer");
     };
-    const deliver = async (origin, event, path = "/deliver") => {
+    const deliver = async (origin, event, path = "/deliver", credential = deliveryCredential) => {
       const response = await fetch(`${origin}${path}`, {
         method: "POST",
-        headers: { "content-type": "application/json" },
+        headers: {
+          "content-type": "application/json",
+          ...(credential === null ? {} : { authorization: `Bearer ${credential}` }),
+        },
         body: JSON.stringify(event),
       });
       return response.status;
@@ -447,6 +452,15 @@ if (persistentSourceChecked) {
     assert.equal(stale.kind, "causal-failure");
     if (stale.kind === "causal-failure")
       assert.equal(stale.problem.outcomes[0].outcome, "unsatisfied");
+    assert.equal(
+      await deliver(observerOrigin, first, "/deliver", null),
+      401,
+      "unauthenticated delivery must not advance the projection",
+    );
+    const stillStale = await fetchObservation(`${observerOrigin}/orders`, [firstEvidence], {
+      authenticated: () => true,
+    });
+    assert.equal(stillStale.kind, "causal-failure");
     const observerCrash = waitForExit(observer);
     await assert.rejects(deliver(observerOrigin, first, "/deliver?crash-after-apply"));
     assert.equal(await observerCrash, 86);
