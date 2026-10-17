@@ -2,7 +2,7 @@
 
 An independent experimental Causal Web implementation for Node.js 24 and newer. It implements its own evidence validation, prefix evaluation, and HTTP behavior. It does not call Rust, load a Rust binary, or use a shared protocol engine.
 
-The [specification](https://github.com/causalweb/spec) remains authoritative. This source preview follows draft `0.1.1-experimental` and vector revision `0.1.3`, with the exact commit in [SPEC_REVISION](SPEC_REVISION). There is no npm release yet; the package is deliberately private. The package name in `package.json` does not claim registry availability or ownership.
+The [specification](https://github.com/causalweb/spec) remains authoritative. This source preview follows draft `0.1.1-experimental` and vector revision `0.1.4`, with the exact commit in [SPEC_REVISION](SPEC_REVISION). There is no npm release yet; the package is deliberately private. The package name in `package.json` does not claim registry availability or ownership.
 
 ## Run it
 
