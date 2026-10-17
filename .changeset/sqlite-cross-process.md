@@ -1,0 +1,4 @@
+---
+---
+
+Development-only interoperability evidence: add distinct local TypeScript SQLite source and observer processes that demonstrate stale-to-confirmed observations, authenticated test delivery, source/observer interruption recovery, duplicate delivery, and ordered pending-event draining. This is not a package API, a cross-language deployment, or a production storage adapter.
