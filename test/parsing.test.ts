@@ -1,6 +1,13 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { position, serializeContext, Issuer, Verifier, ProtocolError, DEFAULT_LIMITS } from "../src/index.js";
+import {
+  position,
+  serializeContext,
+  Issuer,
+  Verifier,
+  ProtocolError,
+  DEFAULT_LIMITS,
+} from "../src/index.js";
 import { absoluteUri, httpsIssuer } from "../src/uri.js";
 import { parseObject, integer } from "../src/json.js";
 import { generateKeyPairSync } from "node:crypto";
@@ -15,16 +22,44 @@ test("positions and URIs reject control and Unicode line terminators", () => {
 });
 
 test("generic URIs preserve identifiers and do not repair invalid syntax", () => {
-  for (const uri of ["urn:test:opaque", "HTTPS://EXAMPLE.COM/a%2Fb?x=y#z", "https://[::1]/path", "https://[v1.host]/", "scheme:", "scheme:/a"]) assert.equal(absoluteUri(uri), true, uri);
-  for (const uri of ["relative/path", "https://host/%GG", "https://host/back\\slash", "https://host/a b", "https://[bad-ip]/", "https://host:bad/", "https://host/#a#b", "https://host/é"]) assert.equal(absoluteUri(uri), false, uri);
+  for (const uri of [
+    "urn:test:opaque",
+    "HTTPS://EXAMPLE.COM/a%2Fb?x=y#z",
+    "https://[::1]/path",
+    "https://[v1.host]/",
+    "scheme:",
+    "scheme:/a",
+  ])
+    assert.equal(absoluteUri(uri), true, uri);
+  for (const uri of [
+    "relative/path",
+    "https://host/%GG",
+    "https://host/back\\slash",
+    "https://host/a b",
+    "https://[bad-ip]/",
+    "https://host:bad/",
+    "https://host/#a#b",
+    "https://host/é",
+  ])
+    assert.equal(absoluteUri(uri), false, uri);
 });
 
 test("required limits cannot be omitted by JavaScript callers", () => {
   const { publicKey } = generateKeyPairSync("ec", { namedCurve: "prime256v1" });
-  const trust = { issuer: "https://issuer.example", keys: new Map([["test", publicKey]]), domains: new Set(["urn:test:domain"]), maxLifetimeSeconds: 1000n, clockSkewSeconds: 0n };
+  const trust = {
+    issuer: "https://issuer.example",
+    keys: new Map([["test", publicKey]]),
+    domains: new Set(["urn:test:domain"]),
+    maxLifetimeSeconds: 1000n,
+    clockSkewSeconds: 0n,
+  };
   for (const key of Object.keys(DEFAULT_LIMITS)) {
-    const limits = { ...DEFAULT_LIMITS } as Record<string, number>; delete limits[key];
-    assert.throws(() => new Verifier("audience", [trust], limits as unknown as typeof DEFAULT_LIMITS), { code: "invalid-configuration" });
+    const limits = { ...DEFAULT_LIMITS } as Record<string, number>;
+    delete limits[key];
+    assert.throws(
+      () => new Verifier("audience", [trust], limits as unknown as typeof DEFAULT_LIMITS),
+      { code: "invalid-configuration" },
+    );
   }
 });
 
@@ -32,7 +67,10 @@ test("JSON depth, Unicode scalars, and exact integer magnitude are checked", () 
   for (const json of ['{"x":"\\uD800"}', '{"x":"\\uDC00"}', '{"x":NaN}', '{"x":[[[[1]]]]}']) {
     assert.throws(() => parseObject(Buffer.from(json), 4), ProtocolError, json);
   }
-  const object = parseObject(Buffer.from('{"x":9007199254740991,"y":9007199254740990.5,"emoji":"\\uD83D\\uDE00"}'), 4);
+  const object = parseObject(
+    Buffer.from('{"x":9007199254740991,"y":9007199254740990.5,"emoji":"\\uD83D\\uDE00"}'),
+    4,
+  );
   assert.equal(integer(object.x, 9007199254740991n), 9007199254740991n);
   assert.throws(() => integer(object.y, 9007199254740991n), ProtocolError);
   assert.equal(object.emoji, "😀");
@@ -46,9 +84,25 @@ test("issuer policy and key references are not mutable JavaScript properties", (
   assert.deepEqual(Object.keys(issuer), []);
   assert.ok(Object.isFrozen(issuer));
   assert.throws(() => Object.assign(issuer, { issuer: "https://attacker.example" }), TypeError);
-  const verifier = new Verifier("audience", [{ issuer: "https://issuer.example", keys: new Map([["test", keys.publicKey]]),
-    domains: new Set(["urn:test:domain"]), maxLifetimeSeconds: 1000n, clockSkewSeconds: 0n }]);
-  const token = issuer.issueCommitted({ subject: "tenant", audiences: ["audience"], domain: "urn:test:domain", position: 0n,
-    issuedAt: 1n, expiresAt: 1000n }, 100n);
+  const verifier = new Verifier("audience", [
+    {
+      issuer: "https://issuer.example",
+      keys: new Map([["test", keys.publicKey]]),
+      domains: new Set(["urn:test:domain"]),
+      maxLifetimeSeconds: 1000n,
+      clockSkewSeconds: 0n,
+    },
+  ]);
+  const token = issuer.issueCommitted(
+    {
+      subject: "tenant",
+      audiences: ["audience"],
+      domain: "urn:test:domain",
+      position: 0n,
+      issuedAt: 1n,
+      expiresAt: 1000n,
+    },
+    100n,
+  );
   assert.equal(verifier.verify(token, "tenant", 100n).position, "0");
 });

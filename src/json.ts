@@ -1,33 +1,49 @@
 import { invalid } from "./error.js";
 
 export class Decimal {
-  constructor(readonly text: string) { Object.freeze(this); }
+  constructor(readonly text: string) {
+    Object.freeze(this);
+  }
 }
 export type Json = null | boolean | string | Decimal | Json[] | JsonObject;
-export interface JsonObject { [key: string]: Json; }
+export interface JsonObject {
+  [key: string]: Json;
+}
 
 // Preserve numeric tokens until range/integrality checks; JSON.parse would round them.
 export function parseObject(bytes: Uint8Array, maxDepth: number): JsonObject {
   let text: string;
-  try { text = new TextDecoder("utf-8", { fatal: true, ignoreBOM: true }).decode(bytes); }
-  catch { return invalid(); }
+  try {
+    text = new TextDecoder("utf-8", { fatal: true, ignoreBOM: true }).decode(bytes);
+  } catch {
+    return invalid();
+  }
   if (text.startsWith("\uFEFF")) invalid();
   let offset = 0;
-  const whitespace = () => { while (/[ \t\r\n]/.test(text[offset] ?? "!") && offset < text.length) offset++; };
+  const whitespace = () => {
+    while (/[ \t\r\n]/.test(text[offset] ?? "!") && offset < text.length) offset++;
+  };
   const string = (): string => {
     const start = offset++;
     while (offset < text.length) {
       const character = text[offset++];
-      if (character === "\\") { offset++; continue; }
+      if (character === "\\") {
+        offset++;
+        continue;
+      }
       if (character === '"') {
         let value: string;
-        try { value = JSON.parse(text.slice(start, offset)) as string; } catch { return invalid(); }
+        try {
+          value = JSON.parse(text.slice(start, offset)) as string;
+        } catch {
+          return invalid();
+        }
         for (let i = 0; i < value.length; i++) {
           const unit = value.charCodeAt(i);
-          if (unit >= 0xD800 && unit <= 0xDBFF) {
+          if (unit >= 0xd800 && unit <= 0xdbff) {
             const next = value.charCodeAt(++i);
-            if (!(next >= 0xDC00 && next <= 0xDFFF)) invalid();
-          } else if (unit >= 0xDC00 && unit <= 0xDFFF) invalid();
+            if (!(next >= 0xdc00 && next <= 0xdfff)) invalid();
+          } else if (unit >= 0xdc00 && unit <= 0xdfff) invalid();
         }
         return value;
       }
@@ -40,49 +56,76 @@ export function parseObject(bytes: Uint8Array, maxDepth: number): JsonObject {
     const first = text[offset];
     if (first === '"') return string();
     if (first === "{") {
-      offset++; whitespace();
+      offset++;
+      whitespace();
       const object = Object.create(null) as JsonObject;
       const names = new Set<string>();
-      if (text[offset] === "}") { offset++; return object; }
+      if (text[offset] === "}") {
+        offset++;
+        return object;
+      }
       while (true) {
         whitespace();
         if (text[offset] !== '"') invalid();
         const key = string();
         if (names.has(key)) invalid();
-        names.add(key); whitespace();
+        names.add(key);
+        whitespace();
         if (text[offset++] !== ":") invalid();
-        object[key] = value(depth + 1); whitespace();
+        object[key] = value(depth + 1);
+        whitespace();
         const next = text[offset++];
         if (next === "}") return object;
         if (next !== ",") invalid();
       }
     }
     if (first === "[") {
-      offset++; whitespace();
+      offset++;
+      whitespace();
       const array: Json[] = [];
-      if (text[offset] === "]") { offset++; return array; }
+      if (text[offset] === "]") {
+        offset++;
+        return array;
+      }
       while (true) {
-        array.push(value(depth + 1)); whitespace();
+        array.push(value(depth + 1));
+        whitespace();
         const next = text[offset++];
         if (next === "]") return array;
         if (next !== ",") invalid();
       }
     }
-    for (const [literal, result] of [["true", true], ["false", false], ["null", null]] as const) {
-      if (text.startsWith(literal, offset)) { offset += literal.length; return result; }
+    for (const [literal, result] of [
+      ["true", true],
+      ["false", false],
+      ["null", null],
+    ] as const) {
+      if (text.startsWith(literal, offset)) {
+        offset += literal.length;
+        return result;
+      }
     }
-    const number = /^-?(?:0|[1-9][0-9]*)(?:\.[0-9]+)?(?:[eE][+-]?[0-9]+)?/.exec(text.slice(offset))?.[0];
+    const number = /^-?(?:0|[1-9][0-9]*)(?:\.[0-9]+)?(?:[eE][+-]?[0-9]+)?/.exec(
+      text.slice(offset),
+    )?.[0];
     if (number === undefined) return invalid();
     offset += number.length;
     return new Decimal(number);
   };
-  const result = value(1); whitespace();
+  const result = value(1);
+  whitespace();
   if (offset !== text.length) invalid();
   return object(result);
 }
 
 export function object(value: Json | undefined): JsonObject {
-  if (value === null || typeof value !== "object" || Array.isArray(value) || value instanceof Decimal) return invalid();
+  if (
+    value === null ||
+    typeof value !== "object" ||
+    Array.isArray(value) ||
+    value instanceof Decimal
+  )
+    return invalid();
   return value;
 }
 

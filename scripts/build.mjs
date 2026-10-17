@@ -9,5 +9,12 @@ const output = join(root, "dist");
 assert.equal(dirname(output), root);
 // Only generated output is removed; renamed/deleted modules must not enter an archive.
 rmSync(output, { recursive: true, force: true });
-execFileSync(process.execPath, [join(root, "node_modules", "typescript", "bin", "tsc"), "--project", join(root, "tsconfig.json")],
-  { cwd: root, stdio: "inherit" });
+execFileSync(
+  process.execPath,
+  [
+    join(root, "node_modules", "typescript", "bin", "tsc"),
+    "--project",
+    join(root, "tsconfig.json"),
+  ],
+  { cwd: root, stdio: "inherit" },
+);

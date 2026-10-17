@@ -3,7 +3,8 @@ import { isIP } from "node:net";
 // RFC 3986 identifier validation without WHATWG URL repair or normalization.
 const unreserved = "A-Za-z0-9._~\\-";
 const subdelims = "!$&'()*+,;=";
-const component = (extra: string) => new RegExp(`^(?:[${unreserved}${subdelims}${extra}]|%[A-Fa-f0-9]{2})*$`);
+const component = (extra: string) =>
+  new RegExp(`^(?:[${unreserved}${subdelims}${extra}]|%[A-Fa-f0-9]{2})*$`);
 const pathChars = component(":@/");
 const queryChars = component(":@/?");
 const regName = component("");
@@ -37,7 +38,11 @@ export function absoluteUri(value: string): boolean {
       const close = authority.indexOf("]");
       if (close === -1) return false;
       const ip = authority.slice(1, close);
-      if (isIP(ip) !== 6 && !new RegExp(`^[vV][0-9A-Fa-f]+\\.[${unreserved}${subdelims}:]+$`).test(ip)) return false;
+      if (
+        isIP(ip) !== 6 &&
+        !new RegExp(`^[vV][0-9A-Fa-f]+\\.[${unreserved}${subdelims}:]+$`).test(ip)
+      )
+        return false;
       if (!/^(?::[0-9]*)?$/.test(authority.slice(close + 1))) return false;
     } else {
       const colon = authority.indexOf(":");
