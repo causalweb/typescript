@@ -2,9 +2,9 @@
 
 Status: Experimental source preview; no full deployment conformance claim
 
-The normative input is draft `0.1.1-experimental`, with exact source, peer, and runner pins in [SPEC_REVISION](SPEC_REVISION), [RUST_REVISION](RUST_REVISION), and [CONFORMANCE_REVISION](CONFORMANCE_REVISION). Shared vector revision: `0.1.2`.
+The normative input is draft `0.1.1-experimental`, with exact source, peer, and runner pins in [SPEC_REVISION](SPEC_REVISION), [RUST_REVISION](RUST_REVISION), and [CONFORMANCE_REVISION](CONFORMANCE_REVISION). Shared vector revision: `0.1.3`.
 
-The repository also provides a development-only JSON Lines adapter for the separate [`causalweb/conformance`](https://github.com/causalweb/conformance) runner. Build first, then invoke its pinned runner with `node scripts/conformance-adapter.mjs` as the adapter command. It supports the 32-case `evidence-verification-v1`, 17-case `prefix-evaluation-v1`, and 11-case `http-client-confirmation-v1` profiles. The latter invokes requirement parsing and constrained-response confirmation; it explicitly excludes cross-origin redirect forwarding because this library's network client is not an HTTP-agent profile. The adapter exposes only public profile outcomes, does not expose local diagnostics or implement a server, and is not full protocol conformance.
+The repository also provides a development-only JSON Lines adapter for the separate [`causalweb/conformance`](https://github.com/causalweb/conformance) runner. Build first, then invoke its pinned runner with `node scripts/conformance-adapter.mjs` as the adapter command. It supports the 32-case `evidence-verification-v1`, 17-case `prefix-evaluation-v1`, 11-case `http-client-confirmation-v1`, and 15-case `http-observer-v1` profiles. The client profile invokes requirement parsing and constrained-response confirmation; it explicitly excludes cross-origin redirect forwarding because this library's network client is not an HTTP-agent profile. The observer profile invokes the public observer API with ephemeral test evidence and synthetic fixed-cut snapshots. It is not a network-server, transport, storage-adapter, or deployment conformance claim. The adapter exposes only public profile outcomes and does not expose local diagnostics.
 
 ## Evidence obtained
 

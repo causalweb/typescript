@@ -41,6 +41,7 @@ jobs:
       - run: node .conformance/runner.mjs --spec .spec -- node scripts/conformance-adapter.mjs
       - run: node .conformance/runner.mjs --spec .spec --profile prefix-evaluation-v1 -- node scripts/conformance-adapter.mjs
       - run: node .conformance/runner.mjs --spec .spec --profile http-client-confirmation-v1 -- node scripts/conformance-adapter.mjs
+      - run: node .conformance/runner.mjs --spec .spec --profile http-observer-v1 -- node scripts/conformance-adapter.mjs
       - run: npm audit --audit-level=high
       - run: npm run test:package
       - run: npm run changeset:status
