@@ -314,7 +314,7 @@ if (persistentSourceChecked) {
       });
       return response.status;
     };
-    const projection = createServer((request, response) => {
+    const projectionHandler = (request, response) => {
       if (request.method === "POST" && request.url === "/deliver") {
         void (async () => {
           if (request.headers.authorization !== `Bearer ${deliveryCredential}`) {
@@ -366,16 +366,21 @@ if (persistentSourceChecked) {
           response.end(Buffer.from(await result.arrayBuffer()));
         })
         .catch(() => response.writeHead(500).end());
-    });
-    const projectionOrigin = await new Promise((resolve, reject) => {
-      projection.once("error", reject);
-      projection.listen(0, "127.0.0.1", () => {
-        const address = projection.address();
-        assert.ok(address && typeof address !== "string");
-        resolve(`http://127.0.0.1:${address.port}`);
+    };
+    const startProjection = async () => {
+      const server = createServer(projectionHandler);
+      const origin = await new Promise((resolve, reject) => {
+        server.once("error", reject);
+        server.listen(0, "127.0.0.1", () => {
+          const address = server.address();
+          assert.ok(address && typeof address !== "string");
+          resolve(`http://127.0.0.1:${address.port}`);
+        });
       });
-    });
-    assert.equal(typeof projectionOrigin, "string");
+      assert.equal(typeof origin, "string");
+      return { server, origin };
+    };
+    let { server: projection, origin: projectionOrigin } = await startProjection();
     try {
       const operation = await fetch(`${sourceOrigin}/orders/http-first`, { method: "POST" });
       assert.equal(operation.status, 201);
@@ -398,6 +403,17 @@ if (persistentSourceChecked) {
       assert.equal(confirmed.kind, "confirmed");
       if (confirmed.kind === "confirmed")
         assert.deepEqual(await confirmed.response.json(), {
+          frontier: "1",
+          orders: ["http-first"],
+        });
+      await new Promise((resolve) => projection.close(resolve));
+      ({ server: projection, origin: projectionOrigin } = await startProjection());
+      const confirmedAfterRestart = await fetchObservation(`${projectionOrigin}/orders`, [token], {
+        authenticated: () => true,
+      });
+      assert.equal(confirmedAfterRestart.kind, "confirmed");
+      if (confirmedAfterRestart.kind === "confirmed")
+        assert.deepEqual(await confirmedAfterRestart.response.json(), {
           frontier: "1",
           orders: ["http-first"],
         });
