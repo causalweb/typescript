@@ -1,6 +1,15 @@
 import { createPublicKey, generateKeyPairSync, sign } from "node:crypto";
 
-import { CLAIM, PROFILE, position, Snapshot, sourceKey, Verifier } from "../dist/src/index.js";
+import {
+  acceptConfirmation,
+  CLAIM,
+  PROFILE,
+  parseContext,
+  position,
+  Snapshot,
+  sourceKey,
+  Verifier,
+} from "../dist/src/index.js";
 
 let source = "";
 process.stdin.setEncoding("utf8");
@@ -165,11 +174,63 @@ function prefixResult(input) {
   };
 }
 
+function httpResult(input) {
+  const testCase = input.case;
+  if (
+    input.version !== 1 ||
+    input.profile !== "http-client-confirmation-v1" ||
+    !testCase ||
+    typeof testCase.id !== "string" ||
+    !testCase.response ||
+    typeof testCase.response.status !== "number"
+  )
+    throw new Error("invalid HTTP conformance input");
+  if (typeof testCase.request?.causal_require === "string") {
+    let rejected = false;
+    try {
+      parseContext([testCase.request.causal_require]);
+    } catch {
+      rejected = true;
+    }
+    if (!rejected) throw new Error("malformed requirement unexpectedly parsed");
+  }
+  if (typeof testCase.request?.evidence_count === "number") {
+    let rejected = false;
+    try {
+      parseContext([Array(testCase.request.evidence_count).fill('"x"').join(", ")]);
+    } catch {
+      rejected = true;
+    }
+    if (!rejected) throw new Error("oversized requirement set unexpectedly parsed");
+  }
+  const headers = new Headers();
+  if (typeof testCase.response.causal_result === "string")
+    headers.set("Causal-Result", testCase.response.causal_result);
+  let confirmation = true;
+  try {
+    acceptConfirmation({ status: testCase.response.status, headers }, true);
+  } catch {
+    confirmation = false;
+  }
+  const result = {
+    client_accepts_constrained_success:
+      confirmation && testCase.response.status >= 200 && testCase.response.status <= 299,
+    ...(typeof testCase.client_accepts_causal_confirmation === "boolean"
+      ? { client_accepts_causal_confirmation: confirmation }
+      : {}),
+  };
+  return { id: testCase.id, result };
+}
+
 process.stdin.on("end", () => {
   try {
     const input = JSON.parse(source);
     const response =
-      input.profile === "evidence-verification-v1" ? evidenceResult(input) : prefixResult(input);
+      input.profile === "evidence-verification-v1"
+        ? evidenceResult(input)
+        : input.profile === "prefix-evaluation-v1"
+          ? prefixResult(input)
+          : httpResult(input);
     process.stdout.write(`${JSON.stringify(response)}\n`);
   } catch (error) {
     process.stderr.write(`${error instanceof Error ? error.message : String(error)}\n`);
