@@ -23,6 +23,7 @@
     "README.md",
     "CHANGELOG.md",
     "MIGRATION.md",
+    "CROSS_RUNTIME_DEMO.md",
     "PERSISTENT_DEMO.md",
     "SQLITE_DEMO.md",
     "CONFORMANCE.md",

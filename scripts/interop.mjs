@@ -342,6 +342,181 @@ if (persistentSourceChecked) {
     rmSync(root, { recursive: true, force: true });
   }
 }
+
+if (persistentSourceChecked) {
+  const root = mkdtempSync(join(tmpdir(), "causalweb-typescript-source-rust-observer-"));
+  let source;
+  let observer;
+  try {
+    const { privateKey, publicKey } = generateKeyPairSync("ec", { namedCurve: "prime256v1" });
+    const privateJwk = privateKey.export({ format: "jwk" });
+    const publicJwk = publicKey.export({ format: "jwk" });
+    const sourceEnvironment = {
+      ...process.env,
+      CAUSALWEB_DEMO_PRIVATE_JWK: JSON.stringify(privateJwk),
+    };
+    const observerEnvironment = {
+      ...process.env,
+      CAUSALWEB_DEMO_PUBLIC_JWK: JSON.stringify(publicJwk),
+    };
+    const waitForOrigin = (child, name) =>
+      new Promise((resolve, reject) => {
+        let output = "";
+        const rejectEarlyExit = (code) =>
+          reject(new Error(`${name} exited before listening (${code})`));
+        child.once("error", reject);
+        child.once("exit", rejectEarlyExit);
+        child.stdout.setEncoding("utf8");
+        child.stdout.on("data", (chunk) => {
+          output += chunk;
+          const [line] = output.split("\n");
+          if (line?.startsWith("http://")) {
+            child.off("exit", rejectEarlyExit);
+            resolve(line.trim());
+          }
+        });
+      });
+    const startSource = async () => {
+      source = spawn(
+        process.execPath,
+        [
+          "scripts/persistent-source-service.mjs",
+          "--state",
+          join(root, "source.json"),
+          "--now",
+          "100",
+          "--listen",
+          "0",
+        ],
+        { cwd: process.cwd(), env: sourceEnvironment, stdio: ["ignore", "pipe", "pipe"] },
+      );
+      return waitForOrigin(source, "TypeScript source");
+    };
+    const startObserver = async () => {
+      observer = spawn(
+        cargo,
+        [
+          "run",
+          "--locked",
+          "--quiet",
+          "--example",
+          "persistent_observer",
+          "--",
+          "--state",
+          join(root, "projection.json"),
+          "--now",
+          "100",
+          "--listen",
+          "127.0.0.1:0",
+        ],
+        { cwd: rust, env: observerEnvironment, stdio: ["ignore", "pipe", "pipe"] },
+      );
+      return waitForOrigin(observer, "Rust observer");
+    };
+    const deliver = async (origin, event) => {
+      const response = await fetch(`${origin}/deliver`, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify(event),
+      });
+      return response.status;
+    };
+    const stop = async (child, origin) => {
+      const response = await fetch(`${origin}/shutdown`, { method: "POST" });
+      assert.equal(response.status, 204);
+      await new Promise((resolve) => child.once("exit", resolve));
+    };
+
+    let sourceOrigin = await startSource();
+    let observerOrigin = await startObserver();
+    assert.equal(typeof sourceOrigin, "string");
+    assert.equal(typeof observerOrigin, "string");
+
+    const firstOperation = await fetch(`${sourceOrigin}/orders/first`, { method: "POST" });
+    assert.equal(firstOperation.status, 201);
+    const first = await firstOperation.json();
+    const [firstEvidence] = parseContext([firstOperation.headers.get("causal-context") ?? ""]);
+    assert.equal(firstEvidence, first.evidence);
+    const stale = await fetchObservation(`${observerOrigin}/orders`, [firstEvidence], {
+      authenticated: () => true,
+    });
+    assert.equal(stale.kind, "causal-failure");
+    if (stale.kind === "causal-failure")
+      assert.equal(stale.problem.outcomes[0].outcome, "unsatisfied");
+    assert.equal(await deliver(observerOrigin, first), 204);
+    const confirmedFirst = await fetchObservation(`${observerOrigin}/orders`, [firstEvidence], {
+      authenticated: () => true,
+    });
+    assert.equal(confirmedFirst.kind, "confirmed");
+    if (confirmedFirst.kind === "confirmed")
+      assert.deepEqual(await confirmedFirst.response.json(), { frontier: "1", orders: ["first"] });
+
+    await stop(source, sourceOrigin);
+    sourceOrigin = await startSource();
+    const second = await (await fetch(`${sourceOrigin}/orders/second`, { method: "POST" })).json();
+    const third = await (await fetch(`${sourceOrigin}/orders/third`, { method: "POST" })).json();
+    assert.equal(await deliver(observerOrigin, third), 204);
+    const secondStale = await fetchObservation(`${observerOrigin}/orders`, [third.evidence], {
+      authenticated: () => true,
+    });
+    assert.equal(secondStale.kind, "causal-failure");
+    assert.equal(await deliver(observerOrigin, second), 204);
+    assert.equal(await deliver(observerOrigin, second), 204, "duplicate delivery must be harmless");
+    const confirmedThird = await fetchObservation(`${observerOrigin}/orders`, [third.evidence], {
+      authenticated: () => true,
+    });
+    assert.equal(confirmedThird.kind, "confirmed");
+    if (confirmedThird.kind === "confirmed")
+      assert.deepEqual(await confirmedThird.response.json(), {
+        frontier: "3",
+        orders: ["first", "second", "third"],
+      });
+
+    await stop(observer, observerOrigin);
+    observerOrigin = await startObserver();
+    const afterRestart = await fetchObservation(`${observerOrigin}/orders`, [third.evidence], {
+      authenticated: () => true,
+    });
+    assert.equal(afterRestart.kind, "confirmed");
+    const forged = `${third.evidence.slice(0, -1)}${third.evidence.endsWith("A") ? "B" : "A"}`;
+    assert.equal(await deliver(observerOrigin, { ...third, evidence: forged }), 400);
+
+    const interrupted = await fetch(`${sourceOrigin}/orders/recovered?interrupt-after-commit`, {
+      method: "POST",
+    });
+    assert.equal(interrupted.status, 500);
+    const recovered = await (await fetch(`${sourceOrigin}/recover`, { method: "POST" })).json();
+    const recoveredEvent = recovered.at(-1);
+    assert.ok(recoveredEvent?.evidence, "source recovery did not issue outbox evidence");
+    const staleRecovered = await fetchObservation(
+      `${observerOrigin}/orders`,
+      [recoveredEvent.evidence],
+      {
+        authenticated: () => true,
+      },
+    );
+    assert.equal(staleRecovered.kind, "causal-failure");
+    assert.equal(await deliver(observerOrigin, recoveredEvent), 204);
+    const confirmedRecovered = await fetchObservation(
+      `${observerOrigin}/orders`,
+      [recoveredEvent.evidence],
+      { authenticated: () => true },
+    );
+    assert.equal(confirmedRecovered.kind, "confirmed");
+    if (confirmedRecovered.kind === "confirmed")
+      assert.deepEqual(await confirmedRecovered.response.json(), {
+        frontier: "4",
+        orders: ["first", "second", "third", "recovered"],
+      });
+
+    await stop(source, sourceOrigin);
+    await stop(observer, observerOrigin);
+  } finally {
+    if (source?.exitCode === null) source.kill();
+    if (observer?.exitCode === null) observer.kill();
+    rmSync(root, { recursive: true, force: true });
+  }
+}
 console.log(
   `Rust -> TypeScript and TypeScript -> Rust signed evidence and HTTP field compatibility passed; stale, expired, forged, and tenant-mismatched requests fail closed.${
     persistentSourceChecked

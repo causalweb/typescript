@@ -29,6 +29,7 @@ try {
   for (const required of [
     "dist/src/index.js",
     "dist/src/index.d.ts",
+    "CROSS_RUNTIME_DEMO.md",
     "MIGRATION.md",
     "PERSISTENT_DEMO.md",
     "CHANGELOG.md",
