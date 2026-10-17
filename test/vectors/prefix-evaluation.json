@@ -1,0 +1,185 @@
+{
+  "format": "causal-web-prefix-evaluation-v1",
+  "profile": "https://github.com/causalweb/spec/profiles/prefix-01",
+  "domain_a": "https://issuer.example/domains/a",
+  "domain_b": "https://issuer.example/domains/b",
+  "assumptions": {
+    "authenticated": true,
+    "issuer_domain_authorized": true,
+    "supported_mapping_unless_overridden": true,
+    "validation_time": 100,
+    "default_expires_at": 1000,
+    "bottom_encoding": null
+  },
+  "cases": [
+    {
+      "id": "PFX-001",
+      "requirements": [{"domain": "domain_a", "position": "5"}],
+      "state": {"frontiers": {"domain_a": "5"}},
+      "expected": [{"outcome": "satisfied", "disposition": "applied"}],
+      "aggregate_success": true
+    },
+    {
+      "id": "PFX-002",
+      "requirements": [{"domain": "domain_a", "position": "5"}],
+      "state": {"frontiers": {"domain_a": "8"}},
+      "expected": [{"outcome": "satisfied", "disposition": "applied"}],
+      "aggregate_success": true
+    },
+    {
+      "id": "PFX-003",
+      "requirements": [{"domain": "domain_a", "position": "5"}],
+      "state": {"frontiers": {"domain_a": "4"}},
+      "expected": [{"outcome": "unsatisfied"}],
+      "aggregate_success": false
+    },
+    {
+      "id": "PFX-004",
+      "requirements": [
+        {"domain": "domain_a", "position": "5"},
+        {"domain": "domain_b", "position": "9"}
+      ],
+      "state": {"frontiers": {"domain_a": "8", "domain_b": "7"}},
+      "expected": [
+        {"outcome": "satisfied", "disposition": "applied"},
+        {"outcome": "unsatisfied"}
+      ],
+      "aggregate_success": false
+    },
+    {
+      "id": "PFX-005",
+      "requirements": [{"domain": "domain_a", "position": "5"}],
+      "state": {
+        "selected_state_frontiers": {"domain_a": "4"},
+        "newer_unselected_frontiers": {"domain_a": "8"}
+      },
+      "expected": [{"outcome": "unsatisfied"}],
+      "aggregate_success": false
+    },
+    {
+      "id": "PFX-006",
+      "requirements": [{"domain": "domain_a", "position": "5"}],
+      "state": {"authorized_exclusions": ["domain_a"]},
+      "expected": [{"outcome": "satisfied", "disposition": "irrelevant"}],
+      "aggregate_success": true
+    },
+    {
+      "id": "PFX-007",
+      "requirements": [{"domain": "domain_a", "position": "5"}],
+      "state": {"configured_domains": ["domain_a"], "lineage_available": false},
+      "expected": [{"outcome": "unknown"}],
+      "aggregate_success": false
+    },
+    {
+      "id": "PFX-008",
+      "requirements": [{"domain": "domain_a", "position": "5"}],
+      "state": {
+        "frontiers": {"domain_a": "3"},
+        "terminal_failures": [{"domain": "domain_a", "position": "4"}]
+      },
+      "expected": [{"outcome": "failed"}],
+      "aggregate_success": false
+    },
+    {
+      "id": "PFX-009",
+      "kind": "position-validation",
+      "position": "05",
+      "expected": "reject-request"
+    },
+    {
+      "id": "PFX-010",
+      "kind": "position-validation-and-comparison",
+      "position": "18446744073709551615",
+      "frontier": "18446744073709551615",
+      "expected": "satisfied"
+    },
+    {
+      "id": "PFX-011",
+      "kind": "position-validation",
+      "position": "18446744073709551616",
+      "expected": "reject-request"
+    },
+    {
+      "id": "PFX-012",
+      "kind": "context-reduction",
+      "evidence": [
+        {"domain": "domain_a", "position": "5", "exp": 200},
+        {"domain": "domain_a", "position": "8", "exp": 300}
+      ],
+      "all_other_dominance_fields_equal": true,
+      "required_usable_until": 180,
+      "allowed_retained_positions": [["5", "8"], ["8"]]
+    },
+    {
+      "id": "PFX-013",
+      "kind": "context-reduction",
+      "evidence": [
+        {"domain": "domain_a", "position": "5", "exp": 300},
+        {"domain": "domain_b", "position": "8", "exp": 300}
+      ],
+      "all_other_dominance_fields_equal": true,
+      "required_usable_until": 180,
+      "allowed_retained_positions": [["5", "8"]]
+    },
+    {
+      "id": "PFX-014",
+      "requirements": [{"domain": "domain_a", "position": "0"}],
+      "state": {"frontiers": {"domain_a": null}},
+      "expected": [{"outcome": "unsatisfied"}],
+      "aggregate_success": false
+    },
+    {
+      "id": "PFX-015",
+      "requirements": [{"domain": "domain_a", "position": "0"}],
+      "state": {"frontiers": {"domain_a": "0"}},
+      "expected": [{"outcome": "satisfied", "disposition": "applied"}],
+      "aggregate_success": true
+    },
+    {
+      "id": "PFX-016",
+      "requirements": [{"domain": "domain_a", "position": "3"}],
+      "state": {
+        "frontiers": {"domain_a": "3"},
+        "terminal_failures": [{"domain": "domain_a", "position": "4"}]
+      },
+      "expected": [{"outcome": "satisfied", "disposition": "applied"}],
+      "aggregate_success": true
+    },
+    {
+      "id": "PFX-017",
+      "requirements": [{"domain": "domain_a", "position": "5"}],
+      "state": {"component_frontiers": {"domain_a": ["8", "4"]}},
+      "expected": [{"outcome": "unsatisfied"}],
+      "aggregate_success": false
+    },
+    {
+      "id": "PFX-018",
+      "requirements": [
+        {"domain": "domain_a", "position": "opaque", "profile_supported": false, "expires_at": 100}
+      ],
+      "state": {},
+      "expected": [{"outcome": "expired"}],
+      "aggregate_success": false
+    },
+    {
+      "id": "PFX-019",
+      "requirements": [
+        {"domain": "domain_a", "position": "opaque", "profile_supported": false}
+      ],
+      "state": {},
+      "expected": [{"outcome": "unsupported"}],
+      "aggregate_success": false
+    },
+    {
+      "id": "PFX-020",
+      "kind": "context-reduction",
+      "evidence": [
+        {"domain": "domain_a", "position": "5", "exp": 300},
+        {"domain": "domain_a", "position": "8", "exp": 150}
+      ],
+      "all_other_dominance_fields_equal": true,
+      "required_usable_until": 180,
+      "allowed_retained_positions": [["5", "8"]]
+    }
+  ]
+}

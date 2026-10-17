@@ -1,0 +1,64 @@
+{
+  "format": "causal-web-jws-evidence-v1",
+  "warning": "The public key and signed evidence are test fixtures and MUST NOT be trusted outside conformance tests.",
+  "validation_time": 1792200000,
+  "expected_issuer": "https://issuer.example",
+  "expected_subject": "tenant-example-7f3a",
+  "expected_audience": "https://verifier.example/causal",
+  "public_jwk": {
+    "kty": "EC",
+    "x": "R-Mi7YoC_iPzx4KpUaKbX0R5PaV69VifXxRy7ivxXIo",
+    "y": "QRsl_ke15EWDpUku9e2F-hIN8nL_MK1EuqjX6fP0wwE",
+    "crv": "P-256",
+    "kid": "test-2026-10",
+    "use": "sig",
+    "alg": "ES256"
+  },
+  "cases": [
+    {
+      "id": "EVD-001",
+      "description": "Valid baseline ES256 evidence",
+      "compact": "eyJhbGciOiJFUzI1NiIsImtpZCI6InRlc3QtMjAyNi0xMCIsInR5cCI6ImN3LWV2aWRlbmNlK2p3dCJ9.eyJpc3MiOiJodHRwczovL2lzc3Vlci5leGFtcGxlIiwic3ViIjoidGVuYW50LWV4YW1wbGUtN2YzYSIsImF1ZCI6Imh0dHBzOi8vdmVyaWZpZXIuZXhhbXBsZS9jYXVzYWwiLCJpYXQiOjE3OTIxOTUyMDAsImV4cCI6MTc5MjI4MTYwMCwianRpIjoidXJuOnV1aWQ6MDE4ZjRmNzYtN2Q4NC03YzEyLWE1ZDMtMmM5MmY2ZjBhMDAxIiwiaHR0cHM6Ly9naXRodWIuY29tL2NhdXNhbHdlYi9zcGVjL2NsYWltcy92MSI6eyJ2IjoxLCJwcm9maWxlIjoiaHR0cHM6Ly9naXRodWIuY29tL2NhdXNhbHdlYi9zcGVjL3Byb2ZpbGVzL3ByZWZpeC0wMSIsImRvbWFpbiI6Imh0dHBzOi8vaXNzdWVyLmV4YW1wbGUvZG9tYWlucy9vcmRlcnMvMjAyNiIsInBvc2l0aW9uIjoiNDE4MiIsImNvbW1pdCI6InN0YWJsZSJ9fQ.PyuMFYAAvp8N3miTQZurEMQiq-RINMp3UQqkRp68NDTLmvh7eMn2MQYblAUkMrAzzhgfecdhXCHQXUMDJQRwZw",
+      "signature_valid": true,
+      "expected": "accept"
+    },
+    {
+      "id": "EVD-002",
+      "description": "Payload position changed without resigning",
+      "compact": "eyJhbGciOiJFUzI1NiIsImtpZCI6InRlc3QtMjAyNi0xMCIsInR5cCI6ImN3LWV2aWRlbmNlK2p3dCJ9.eyJpc3MiOiJodHRwczovL2lzc3Vlci5leGFtcGxlIiwic3ViIjoidGVuYW50LWV4YW1wbGUtN2YzYSIsImF1ZCI6Imh0dHBzOi8vdmVyaWZpZXIuZXhhbXBsZS9jYXVzYWwiLCJpYXQiOjE3OTIxOTUyMDAsImV4cCI6MTc5MjI4MTYwMCwianRpIjoidXJuOnV1aWQ6MDE4ZjRmNzYtN2Q4NC03YzEyLWE1ZDMtMmM5MmY2ZjBhMDAxIiwiaHR0cHM6Ly9naXRodWIuY29tL2NhdXNhbHdlYi9zcGVjL2NsYWltcy92MSI6eyJ2IjoxLCJwcm9maWxlIjoiaHR0cHM6Ly9naXRodWIuY29tL2NhdXNhbHdlYi9zcGVjL3Byb2ZpbGVzL3ByZWZpeC0wMSIsImRvbWFpbiI6Imh0dHBzOi8vaXNzdWVyLmV4YW1wbGUvZG9tYWlucy9vcmRlcnMvMjAyNiIsInBvc2l0aW9uIjoiNDE4MyIsImNvbW1pdCI6InN0YWJsZSJ9fQ.PyuMFYAAvp8N3miTQZurEMQiq-RINMp3UQqkRp68NDTLmvh7eMn2MQYblAUkMrAzzhgfecdhXCHQXUMDJQRwZw",
+      "signature_valid": false,
+      "expected": "reject-request"
+    },
+    {
+      "id": "EVD-003",
+      "description": "Valid signature for another audience",
+      "compact": "eyJhbGciOiJFUzI1NiIsImtpZCI6InRlc3QtMjAyNi0xMCIsInR5cCI6ImN3LWV2aWRlbmNlK2p3dCJ9.eyJpc3MiOiJodHRwczovL2lzc3Vlci5leGFtcGxlIiwic3ViIjoidGVuYW50LWV4YW1wbGUtN2YzYSIsImF1ZCI6Imh0dHBzOi8vb3RoZXIuZXhhbXBsZS9jYXVzYWwiLCJpYXQiOjE3OTIxOTUyMDAsImV4cCI6MTc5MjI4MTYwMCwianRpIjoidXJuOnV1aWQ6MDE4ZjRmNzYtN2Q4NC03YzEyLWE1ZDMtMmM5MmY2ZjBhMDAyIiwiaHR0cHM6Ly9naXRodWIuY29tL2NhdXNhbHdlYi9zcGVjL2NsYWltcy92MSI6eyJ2IjoxLCJwcm9maWxlIjoiaHR0cHM6Ly9naXRodWIuY29tL2NhdXNhbHdlYi9zcGVjL3Byb2ZpbGVzL3ByZWZpeC0wMSIsImRvbWFpbiI6Imh0dHBzOi8vaXNzdWVyLmV4YW1wbGUvZG9tYWlucy9vcmRlcnMvMjAyNiIsInBvc2l0aW9uIjoiNDE4MiIsImNvbW1pdCI6InN0YWJsZSJ9fQ.BkFzrLXhso_UHVLEfKONl7zl0xDc_im6usAlZ-gOCySz-65gIJqyFgsAEjTce77J7NbeSbwwRDrjr956E6iflA",
+      "signature_valid": true,
+      "expected": "reject-request",
+      "reason": "audience"
+    },
+    {
+      "id": "EVD-004",
+      "description": "Authentic evidence expired at validation_time",
+      "compact": "eyJhbGciOiJFUzI1NiIsImtpZCI6InRlc3QtMjAyNi0xMCIsInR5cCI6ImN3LWV2aWRlbmNlK2p3dCJ9.eyJpc3MiOiJodHRwczovL2lzc3Vlci5leGFtcGxlIiwic3ViIjoidGVuYW50LWV4YW1wbGUtN2YzYSIsImF1ZCI6Imh0dHBzOi8vdmVyaWZpZXIuZXhhbXBsZS9jYXVzYWwiLCJpYXQiOjE3OTIxOTUyMDAsImV4cCI6MTc5MjE5NzAwMCwianRpIjoidXJuOnV1aWQ6MDE4ZjRmNzYtN2Q4NC03YzEyLWE1ZDMtMmM5MmY2ZjBhMDAzIiwiaHR0cHM6Ly9naXRodWIuY29tL2NhdXNhbHdlYi9zcGVjL2NsYWltcy92MSI6eyJ2IjoxLCJwcm9maWxlIjoiaHR0cHM6Ly9naXRodWIuY29tL2NhdXNhbHdlYi9zcGVjL3Byb2ZpbGVzL3ByZWZpeC0wMSIsImRvbWFpbiI6Imh0dHBzOi8vaXNzdWVyLmV4YW1wbGUvZG9tYWlucy9vcmRlcnMvMjAyNiIsInBvc2l0aW9uIjoiNDE4MiIsImNvbW1pdCI6InN0YWJsZSJ9fQ.39NgMPdUeO_hctSEB4zG6hqqbGvdrzMqTgK_2qvw7LN8mjBAi9hfbfZItMIkhTbgCv5UfhrbPDZPqEJ0kNWOIw",
+      "signature_valid": true,
+      "expected": "expired"
+    },
+    {
+      "id": "EVD-005",
+      "description": "Unsecured JWS with alg none",
+      "compact": "eyJhbGciOiJub25lIiwia2lkIjoidGVzdC0yMDI2LTEwIiwidHlwIjoiY3ctZXZpZGVuY2Urand0In0.eyJpc3MiOiJodHRwczovL2lzc3Vlci5leGFtcGxlIiwic3ViIjoidGVuYW50LWV4YW1wbGUtN2YzYSIsImF1ZCI6Imh0dHBzOi8vdmVyaWZpZXIuZXhhbXBsZS9jYXVzYWwiLCJpYXQiOjE3OTIxOTUyMDAsImV4cCI6MTc5MjI4MTYwMCwianRpIjoidXJuOnV1aWQ6MDE4ZjRmNzYtN2Q4NC03YzEyLWE1ZDMtMmM5MmY2ZjBhMDAxIiwiaHR0cHM6Ly9naXRodWIuY29tL2NhdXNhbHdlYi9zcGVjL2NsYWltcy92MSI6eyJ2IjoxLCJwcm9maWxlIjoiaHR0cHM6Ly9naXRodWIuY29tL2NhdXNhbHdlYi9zcGVjL3Byb2ZpbGVzL3ByZWZpeC0wMSIsImRvbWFpbiI6Imh0dHBzOi8vaXNzdWVyLmV4YW1wbGUvZG9tYWlucy9vcmRlcnMvMjAyNiIsInBvc2l0aW9uIjoiNDE4MiIsImNvbW1pdCI6InN0YWJsZSJ9fQ.",
+      "signature_valid": false,
+      "expected": "reject-request",
+      "reason": "algorithm"
+    },
+    {
+      "id": "EVD-006",
+      "description": "Valid signature over payload containing duplicate iss names",
+      "compact": "eyJhbGciOiJFUzI1NiIsImtpZCI6InRlc3QtMjAyNi0xMCIsInR5cCI6ImN3LWV2aWRlbmNlK2p3dCJ9.eyJpc3MiOiJodHRwczovL2lzc3Vlci5leGFtcGxlIiwiaXNzIjoiaHR0cHM6Ly9hdHRhY2tlci5leGFtcGxlIiwic3ViIjoidGVuYW50LWV4YW1wbGUtN2YzYSIsImF1ZCI6Imh0dHBzOi8vdmVyaWZpZXIuZXhhbXBsZS9jYXVzYWwiLCJpYXQiOjE3OTIxOTUyMDAsImV4cCI6MTc5MjI4MTYwMCwianRpIjoidXJuOnV1aWQ6MDE4ZjRmNzYtN2Q4NC03YzEyLWE1ZDMtMmM5MmY2ZjBhMDA0IiwiaHR0cHM6Ly9naXRodWIuY29tL2NhdXNhbHdlYi9zcGVjL2NsYWltcy92MSI6eyJ2IjoxLCJwcm9maWxlIjoiaHR0cHM6Ly9naXRodWIuY29tL2NhdXNhbHdlYi9zcGVjL3Byb2ZpbGVzL3ByZWZpeC0wMSIsImRvbWFpbiI6Imh0dHBzOi8vaXNzdWVyLmV4YW1wbGUvZG9tYWlucy9vcmRlcnMvMjAyNiIsInBvc2l0aW9uIjoiNDE4MiIsImNvbW1pdCI6InN0YWJsZSJ9fQ.lfX8mddr9QWsYqukmquWNtiDEUk-A9_f8qPliyXi5_nYfqym3B8paVKyW5HY5PKSlMEdX8EuF8fNcL2M6JlKog",
+      "signature_valid": true,
+      "expected": "reject-request",
+      "reason": "duplicate-claim-name"
+    }
+  ]
+}

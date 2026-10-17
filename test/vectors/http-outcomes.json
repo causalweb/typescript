@@ -1,0 +1,79 @@
+{
+  "format": "causal-web-http-outcomes-v1",
+  "cases": [
+    {
+      "id": "HTTP-001",
+      "dependency_outcomes": ["satisfied", "satisfied"],
+      "response": {"status": 200, "causal_result": "satisfied"},
+      "client_accepts_constrained_success": true
+    },
+    {
+      "id": "HTTP-002",
+      "dependency_outcomes": ["satisfied"],
+      "response": {"status": 200, "causal_result": null},
+      "client_accepts_constrained_success": false
+    },
+    {
+      "id": "HTTP-003",
+      "dependency_outcomes": ["satisfied", "unsatisfied"],
+      "response": {"status": 412, "causal_result": "unsatisfied", "outcome_count": 2},
+      "client_accepts_constrained_success": false
+    },
+    {
+      "id": "HTTP-004",
+      "dependency_outcomes": ["unsatisfied"],
+      "wait_deadline_reached": true,
+      "response": {"status": 412, "causal_result": "unsatisfied"},
+      "client_accepts_constrained_success": false
+    },
+    {
+      "id": "HTTP-005",
+      "dependency_outcomes": ["failed"],
+      "response": {"status": 503, "causal_result": "unsatisfied"},
+      "client_accepts_constrained_success": false
+    },
+    {
+      "id": "HTTP-006",
+      "response": {"status": 302, "cross_origin": true},
+      "forward_requirements_automatically": false,
+      "client_accepts_constrained_success": false
+    },
+    {
+      "id": "HTTP-007",
+      "request": {"causal_require": "\"unterminated"},
+      "response": {"status": 400, "causal_result": null},
+      "client_accepts_constrained_success": false
+    },
+    {
+      "id": "HTTP-008",
+      "request": {"evidence_count": 17, "max_requirements": 16},
+      "response": {"status": 431, "causal_result": null},
+      "client_accepts_constrained_success": false
+    },
+    {
+      "id": "HTTP-009",
+      "dependency_outcomes": ["satisfied"],
+      "response": {"status": 404, "causal_result": "satisfied"},
+      "client_accepts_causal_confirmation": true,
+      "client_accepts_constrained_success": false
+    },
+    {
+      "id": "HTTP-010",
+      "response": {"status": 202, "causal_result": "satisfied"},
+      "server_protocol_violation": true,
+      "client_accepts_constrained_success": false
+    },
+    {
+      "id": "HTTP-011",
+      "response": {"status": 200, "causal_result": "satisfied, satisfied"},
+      "server_protocol_violation": true,
+      "client_accepts_constrained_success": false
+    },
+    {
+      "id": "HTTP-012",
+      "response": {"status": 304, "causal_result": "satisfied"},
+      "server_protocol_violation": true,
+      "client_accepts_constrained_success": false
+    }
+  ]
+}
