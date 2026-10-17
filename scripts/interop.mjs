@@ -5,6 +5,7 @@ import { mkdtempSync, readFileSync, renameSync, rmSync, writeFileSync } from "no
 import { createServer } from "node:http";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { isDeepStrictEqual } from "node:util";
 import {
   acceptConfirmation,
   fetchObservation,
@@ -279,28 +280,26 @@ if (persistentSourceChecked) {
       );
     };
     const deliveryProofValid = (event, proof) => {
-      if (typeof proof !== "string") return "proof is not a string";
+      if (typeof proof !== "string") return false;
       const [header, payload, signature, extra] = proof.split(".");
-      if (!header || !payload || !signature || extra !== undefined) return "proof segments";
+      if (!header || !payload || !signature || extra !== undefined) return false;
       try {
         const protectedHeader = JSON.parse(Buffer.from(header, "base64url").toString("utf8"));
-        if (protectedHeader?.alg !== "ES256") return "unexpected algorithm";
-        if (protectedHeader?.kid !== first.kid) return "unexpected key id";
-        if (protectedHeader?.typ !== "causalweb-demo-delivery+jwt") return "unexpected type";
-        if (Buffer.from(payload, "base64url").toString("utf8") !== JSON.stringify(event))
-          return "payload mismatch";
         if (
-          !verify(
-            "sha256",
-            Buffer.from(`${header}.${payload}`),
-            { key: persistentPublicKey, dsaEncoding: "ieee-p1363" },
-            Buffer.from(signature, "base64url"),
-          )
+          protectedHeader?.alg !== "ES256" ||
+          protectedHeader?.kid !== first.kid ||
+          protectedHeader?.typ !== "causalweb-demo-delivery+jwt" ||
+          !isDeepStrictEqual(JSON.parse(Buffer.from(payload, "base64url").toString("utf8")), event)
         )
-          return "signature mismatch";
-        return null;
-      } catch (error) {
-        return `proof parser: ${error instanceof Error ? error.message : "unknown"}`;
+          return false;
+        return verify(
+          "sha256",
+          Buffer.from(`${header}.${payload}`),
+          { key: persistentPublicKey, dsaEncoding: "ieee-p1363" },
+          Buffer.from(signature, "base64url"),
+        );
+      } catch {
+        return false;
       }
     };
     const deliverRustEvent = async (event, credential = deliveryCredential) => {
@@ -332,8 +331,8 @@ if (persistentSourceChecked) {
           }
           try {
             const delivery = JSON.parse(body);
-            const proofError = deliveryProofValid(delivery?.event, delivery?.proof);
-            if (proofError) throw new Error(proofError);
+            if (!deliveryProofValid(delivery?.event, delivery?.proof))
+              throw new Error("invalid proof");
             const applied = persistentVerifier.verify(delivery.event.evidence, first.subject, 100n);
             const state = JSON.parse(readFileSync(projectionPath, "utf8"));
             if (BigInt(applied.position) !== BigInt(state.frontier) + 1n)
@@ -343,10 +342,7 @@ if (persistentSourceChecked) {
               orders: [...state.orders, delivery.event.order],
             });
             response.writeHead(204).end();
-          } catch (error) {
-            console.error(
-              `test-only Rust delivery rejected: ${error instanceof Error ? error.message : "unknown"}`,
-            );
+          } catch {
             response.writeHead(400).end();
           }
         })();
