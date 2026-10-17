@@ -21,13 +21,13 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           repository: causalweb/spec
-          ref: a012c85a5af5b7d5506a1c9a83f94815a124b1ea
+          ref: fbc97bc34328a68e521f9771deaeb753804c7533
           path: .spec
           persist-credentials: false
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           repository: causalweb/conformance
-          ref: 4c1af5fdc93890656ce9387ea2dabb6083deb460
+          ref: 4f75458d062a511c1655927b6534b1d02eca6e4d
           path: .conformance
           persist-credentials: false
       - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
