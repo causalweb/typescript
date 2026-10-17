@@ -284,13 +284,11 @@ if (persistentSourceChecked) {
       if (!header || !payload || !signature || extra !== undefined) return "proof segments";
       try {
         const protectedHeader = JSON.parse(Buffer.from(header, "base64url").toString("utf8"));
-        if (
-          protectedHeader?.alg !== "ES256" ||
-          protectedHeader?.kid !== first.kid ||
-          protectedHeader?.typ !== "causalweb-demo-delivery+jwt" ||
-          Buffer.from(payload, "base64url").toString("utf8") !== JSON.stringify(event)
-        )
-          return "header or payload mismatch";
+        if (protectedHeader?.alg !== "ES256") return "unexpected algorithm";
+        if (protectedHeader?.kid !== first.kid) return "unexpected key id";
+        if (protectedHeader?.typ !== "causalweb-demo-delivery+jwt") return "unexpected type";
+        if (Buffer.from(payload, "base64url").toString("utf8") !== JSON.stringify(event))
+          return "payload mismatch";
         if (
           !verify(
             "sha256",
