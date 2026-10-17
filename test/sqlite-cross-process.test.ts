@@ -116,13 +116,13 @@ test("independent SQLite source and observer processes preserve committed causal
     CAUSALWEB_DEMO_PUBLIC_JWK: JSON.stringify(publicKey.export({ format: "jwk" })),
     CAUSALWEB_DEMO_DELIVERY_CREDENTIAL: credential,
   };
-  const source = start("scripts/sqlite-source-service.mjs", sourceDatabase, sourceEnvironment);
+  let source = start("scripts/sqlite-source-service.mjs", sourceDatabase, sourceEnvironment);
   let observer = start(
     "scripts/sqlite-observer-service.mjs",
     observerDatabase,
     observerEnvironment,
   );
-  const sourceOrigin = await source.origin;
+  let sourceOrigin = await source.origin;
   let observerOrigin = await observer.origin;
   context.after(async () => {
     if (source.child.exitCode === null) await stop(source, sourceOrigin);
@@ -209,5 +209,36 @@ test("independent SQLite source and observer processes preserve committed causal
   assert.deepEqual(await confirmedFifth.json(), {
     orders: ["first", "second", "interrupted", "fourth", "fifth"],
     frontier: "5",
+  });
+
+  const sourceStopped = new Promise<number | null>((resolveExit) =>
+    source.child.once("exit", resolveExit),
+  );
+  await assert.rejects(
+    fetch(`${sourceOrigin}/orders/sixth?crash-after-commit`, { method: "POST" }),
+  );
+  assert.equal(await sourceStopped, 86);
+  source = start("scripts/sqlite-source-service.mjs", sourceDatabase, sourceEnvironment);
+  sourceOrigin = await source.origin;
+  const recoveredAfterCrash: unknown = await (
+    await fetch(`${sourceOrigin}/recover`, { method: "POST" })
+  ).json();
+  assert.ok(Array.isArray(recoveredAfterCrash));
+  assert.equal(recoveredAfterCrash.length, 6);
+  const recoveredAfterCrashEvent = sourceEvent(recoveredAfterCrash.at(-1));
+  const staleAfterSourceRestart = await constrained(
+    observerOrigin,
+    recoveredAfterCrashEvent.evidence,
+  );
+  assert.equal(staleAfterSourceRestart.status, 412, await staleAfterSourceRestart.text());
+  assert.equal((await deliver(observerOrigin, recoveredAfterCrashEvent, credential)).status, 204);
+  const confirmedAfterSourceRestart = await constrained(
+    observerOrigin,
+    recoveredAfterCrashEvent.evidence,
+  );
+  acceptConfirmation(confirmedAfterSourceRestart, true);
+  assert.deepEqual(await confirmedAfterSourceRestart.json(), {
+    orders: ["first", "second", "interrupted", "fourth", "fifth", "sixth"],
+    frontier: "6",
   });
 });
