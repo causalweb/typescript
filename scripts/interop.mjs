@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { execFileSync, spawn, spawnSync } from "node:child_process";
-import { createPublicKey, generateKeyPairSync, randomBytes, verify } from "node:crypto";
+import { createPublicKey, generateKeyPairSync, randomBytes, sign, verify } from "node:crypto";
 import { mkdtempSync, readFileSync, renameSync, rmSync, writeFileSync } from "node:fs";
 import { createServer } from "node:http";
 import { tmpdir } from "node:os";
@@ -259,7 +259,7 @@ if (persistentSourceChecked) {
       writeFileSync(temporary, JSON.stringify(state));
       renameSync(temporary, projectionPath);
     };
-    writeProjection({ frontier: "0", orders: [] });
+    writeProjection({ frontier: "0", orders: [], applied: [] });
     const projectionSnapshot = () => {
       const state = JSON.parse(readFileSync(projectionPath, "utf8"));
       return new Snapshot(
@@ -267,7 +267,7 @@ if (persistentSourceChecked) {
         {
           status: 200,
           headers: new Headers({ "Content-Type": "application/json" }),
-          body: Buffer.from(JSON.stringify(state)),
+          body: Buffer.from(JSON.stringify({ frontier: state.frontier, orders: state.orders })),
         },
         "persistent-peer-http/v1",
         "orders/v1",
@@ -302,6 +302,20 @@ if (persistentSourceChecked) {
         return false;
       }
     };
+    const signRustDelivery = (event) => {
+      const header = Buffer.from(
+        JSON.stringify({ alg: "ES256", kid: first.kid, typ: "causalweb-demo-delivery+jwt" }),
+      ).toString("base64url");
+      const payload = Buffer.from(JSON.stringify(event)).toString("base64url");
+      const input = `${header}.${payload}`;
+      return {
+        ...event,
+        deliveryProof: `${input}.${sign("sha256", Buffer.from(input), {
+          key: persistentPrivateKey,
+          dsaEncoding: "ieee-p1363",
+        }).toString("base64url")}`,
+      };
+    };
     const deliverRustEvent = async (event, credential = deliveryCredential) => {
       const { deliveryProof, ...sourceEvent } = event;
       const response = await fetch(`${projectionOrigin}/deliver`, {
@@ -335,11 +349,22 @@ if (persistentSourceChecked) {
               throw new Error("invalid proof");
             const applied = persistentVerifier.verify(delivery.event.evidence, first.subject, 100n);
             const state = JSON.parse(readFileSync(projectionPath, "utf8"));
+            if (!Array.isArray(state.applied)) throw new Error("invalid projection state");
+            const existing = state.applied.find(
+              (event) => BigInt(event.position) === BigInt(applied.position),
+            );
+            if (BigInt(applied.position) <= BigInt(state.frontier)) {
+              if (!existing || !isDeepStrictEqual(existing, delivery.event))
+                throw new Error("conflicting covered delivery");
+              response.writeHead(204).end();
+              return;
+            }
             if (BigInt(applied.position) !== BigInt(state.frontier) + 1n)
               throw new Error("delivery is not next in source order");
             writeProjection({
               frontier: applied.position,
               orders: [...state.orders, delivery.event.order],
+              applied: [...state.applied, delivery.event],
             });
             response.writeHead(204).end();
           } catch {
@@ -397,6 +422,12 @@ if (persistentSourceChecked) {
         assert.equal(stale.problem.outcomes[0].outcome, "unsatisfied");
       assert.equal(await deliverRustEvent({ ...event, order: "altered" }), 400);
       assert.equal(await deliverRustEvent(event), 204);
+      assert.equal(await deliverRustEvent(event), 204, "duplicate delivery must be harmless");
+      assert.equal(
+        await deliverRustEvent(signRustDelivery({ ...event, order: "conflicting" })),
+        400,
+        "a valid source proof must not replace a covered source position",
+      );
       const confirmed = await fetchObservation(`${projectionOrigin}/orders`, [token], {
         authenticated: () => true,
       });
