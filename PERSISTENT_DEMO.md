@@ -18,6 +18,7 @@ The scenario proves these behaviors for this reference experiment:
 - An injected interruption after source commit leaves a durable outbox fact without evidence. After service reconstruction, outbox recovery creates the missing evidence and the projection can account for it.
 - Reconstructing both services from their state directories retains the previously confirmed state.
 - If the projection representation survives while its source-lineage record is explicitly lost, the same constrained observation returns `unknown`, not `satisfied` or `unsatisfied`. The persisted unknown marker survives service reconstruction until an adapter establishes new lineage.
+- If the projection records a source position it knows cannot become observable, a requirement at that position returns `failed`. The terminal-failure position survives service reconstruction; already-applied earlier positions remain satisfied.
 
 The test uses the exported `Issuer`, `Verifier`, `Snapshot`, `observe`, `fetchObservation`, and Structured Field helpers. It does not hardcode a causal HTTP response.
 
@@ -25,6 +26,6 @@ The test uses the exported `Issuer`, `Verifier`, `Snapshot`, `observe`, `fetchOb
 
 The experiment serializes source commits and projection deliveries. It relies on Node.js file replacement within a single local filesystem. It does not call `fsync`, prove power-loss durability, persist signing keys, run services in separate operating-system processes, provide TLS or application authentication, model concurrent writers, or validate a database transaction. The fixed test clock and loopback transport are test controls.
 
-It therefore demonstrates the required state-lineage shape, a narrow recovery path, and fail-closed treatment of lost lineage. It does not establish a production-grade outbox, filesystem portability, multi-process crash safety, cross-language persistent-service interoperability, or a complete Prefix Issuer/Verifier deployment class. Deployments must supply their own storage transaction, key management, authentication, authorization, recovery, and operational controls described in [SECURITY.md](SECURITY.md).
+It therefore demonstrates the required state-lineage shape, a narrow recovery path, and fail-closed treatment of lost lineage and a recorded terminal failure. It does not establish a production-grade outbox, filesystem portability, multi-process crash safety, cross-language persistent-service interoperability, a generic failure detector, or a complete Prefix Issuer/Verifier deployment class. Deployments must supply their own storage transaction, key management, authentication, authorization, recovery, and operational controls described in [SECURITY.md](SECURITY.md).
 
 For a separate experiment that uses SQLite transactions rather than atomically replaced JSON documents, see [SQLite transactional experiment](SQLITE_DEMO.md). It has different assumptions and is not a production adapter either.
