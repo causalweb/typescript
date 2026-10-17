@@ -539,6 +539,38 @@ if (persistentSourceChecked) {
         orders: ["first", "second", "third", "recovered"],
       });
 
+    const terminal = await (
+      await fetch(`${sourceOrigin}/orders/terminal`, { method: "POST" })
+    ).json();
+    assert.equal(await deliver(observerOrigin, terminal, "/terminal"), 204);
+    const failed = await fetchObservation(`${observerOrigin}/orders`, [terminal.evidence], {
+      authenticated: () => true,
+    });
+    assert.equal(failed.kind, "causal-failure");
+    if (failed.kind === "causal-failure")
+      assert.equal(failed.problem.outcomes[0].outcome, "failed");
+    const stillCovered = await fetchObservation(
+      `${observerOrigin}/orders`,
+      [recoveredEvent.evidence],
+      {
+        authenticated: () => true,
+      },
+    );
+    assert.equal(stillCovered.kind, "confirmed");
+
+    await stop(observer, observerOrigin);
+    observerOrigin = await startObserver();
+    const failedAfterRestart = await fetchObservation(
+      `${observerOrigin}/orders`,
+      [terminal.evidence],
+      {
+        authenticated: () => true,
+      },
+    );
+    assert.equal(failedAfterRestart.kind, "causal-failure");
+    if (failedAfterRestart.kind === "causal-failure")
+      assert.equal(failedAfterRestart.problem.outcomes[0].outcome, "failed");
+
     await stop(source, sourceOrigin);
     await stop(observer, observerOrigin);
   } finally {
