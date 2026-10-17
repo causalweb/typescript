@@ -16,6 +16,7 @@ jobs:
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
+          fetch-depth: 0
           persist-credentials: false
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -31,9 +32,18 @@ jobs:
       - run: node scripts/check-spec.mjs .spec
       - run: npm audit --audit-level=high
       - run: npm run test:package
+      - run: npm run changeset:status
+      - run: npm run release:check
+      - if: github.event_name == 'pull_request'
+        run: npm run release:check
+        env:
+          CAUSALWEB_CHANGESET_BASE: ${{ github.event.pull_request.base.sha }}
+      - run: npm run test:release
   peer:
     runs-on: ubuntu-24.04
     timeout-minutes: 15
+    env:
+      RUSTUP_TOOLCHAIN: 1.95.0
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:

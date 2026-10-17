@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { generateKeyPairSync } from "node:crypto";
 import {
   Issuer, Verifier, Snapshot, sourceKey, observe, requestHeaders,
-  acceptConfirmation, ProtocolError, type Representation,
+  acceptConfirmation, ProtocolError, ObservationError, type Representation,
 } from "@causalweb/protocol";
 
 // Synthetic SDK exercise. This does not establish source durability or recovery.
@@ -38,4 +38,17 @@ assert.equal(await fresh.text(), '{"order":42}');
 const denied = await observe({ ...options, authorize: () => false, read: () => { throw new Error("must not select state"); } });
 assert.equal(denied.status, 403);
 assert.equal(denied.headers.has("causal-result"), false);
-console.log("Installed-package consumer: stale rejection, confirmed observation, and access denial passed");
+const cause = new Error("synthetic database outage");
+try {
+  await observe({ ...options, read: () => { throw cause; } });
+  assert.fail("must reject local read failure");
+} catch (error) {
+  assert.ok(error instanceof ObservationError);
+  assert.equal(error.code, "read-unavailable");
+  assert.equal(error.cause, cause);
+  const response = error.toResponse();
+  assert.equal(response.status, 503);
+  assert.equal(response.headers.has("causal-result"), false);
+  assert.equal(await response.text(), "");
+}
+console.log("Installed-package consumer: stale rejection, confirmation, access denial, and local-error conversion passed");

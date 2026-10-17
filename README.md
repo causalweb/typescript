@@ -86,8 +86,25 @@ npm pack --ignore-scripts
 
 Install the generated tarball in an existing Node.js 24 ESM application with `npm install /absolute/path/to/the-generated.tgz`, then import from `@causalweb/protocol`. Do not import `dist/src` internals from the installed package. TypeScript applications need their usual TypeScript compiler and Node.js type definitions; the package check verifies them without the DOM library. The complete consumer example covers issuer/verifier setup, a bound snapshot, stale and confirmed responses, and authorization denial. Its source facts are synthetic and must be replaced by an actual storage adapter before use with real guarantees.
 
-`observe` returns ordinary 403 when `authorize` resolves to `false`, and ordinary 503 if that check throws, rejects, or returns a non-boolean JavaScript value. Neither case returns application bytes or a causal marker. Authorization is rechecked after reading. A thrown/rejected read similarly produces an ordinary 503. Log adapter failures in the application's own callback, with its redaction policy; no exception text is put on the wire. A local clock/configuration failure produces an ordinary 500. These responses are distinct from indexed causal failures. The SDK does not install process-wide logging or an HTTP server error handler.
+`observe` returns ordinary 403 when `authorize` resolves to `false`; it rechecks authorization after reading. Exceptions and invalid adapter results now reject with `ObservationError` instead of silently discarding their causes. Handle this before writing HTTP:
 
-Builds remove only the generated `dist` directory before compilation so deleted or renamed modules do not remain in the package. Issuer configuration and key references use ECMAScript private fields and frozen instances; this prevents accidental mutation/enumeration, not compromise of the Node.js process. No wire or public TypeScript API migration is required by these changes.
+```ts
+import { observe, ObservationError, type ObservationOptions } from "@causalweb/protocol";
+
+async function handleObservation(options: ObservationOptions): Promise<Response> {
+  try {
+    return await observe(options);
+  } catch (error) {
+    if (!(error instanceof ObservationError)) throw error;
+    // This application logs only safe metadata; its logger/redaction policy owns causes.
+    console.error({ code: error.code, phase: error.phase });
+    return error.toResponse();
+  }
+}
+```
+
+The original cause is available as `error.cause` and may contain secrets. Do not serialize it or log it without redaction. `toResponse()` constructs an empty `no-store` 503 for authorization/read/target failures, or 500 for clock, verification, and invalid-representation failures. It never includes a cause, application data, or causal marker. Indexed causal `failed` outcomes remain ordinary returned protocol responses, not these local exceptions. The SDK installs no process-wide logger, HTTP server error handler, or adapter timeout. Bound/cancel application I/O in the host. See [MIGRATION.md](MIGRATION.md) for this breaking change to the unreleased error contract.
+
+Builds remove only the generated `dist` directory before compilation so deleted or renamed modules do not remain in the package. Issuer configuration and key references use ECMAScript private fields and frozen instances; this prevents accidental mutation/enumeration, not compromise of the Node.js process. Snapshot representations require integer status, `Headers`, and `Uint8Array`/`Buffer` body values. A JavaScript string or array is rejected, never silently coerced into different confirmed bytes. The wire revision is unchanged.
 
 Code/tooling: `Apache-2.0 OR MIT`; documentation: `CC-BY-4.0`. See [LICENSE.md](LICENSE.md).

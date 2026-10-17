@@ -8,12 +8,17 @@
   "license": "Apache-2.0 OR MIT",
   "engines": { "node": ">=24" },
   "exports": { ".": { "types": "./dist/src/index.d.ts", "import": "./dist/src/index.js" } },
-  "files": ["dist/src/", "README.md", "CONFORMANCE.md", "SECURITY.md", "LICENSE.md", "LICENSES/", "SPEC_REVISION"],
+  "files": ["dist/src/", "README.md", "CHANGELOG.md", "MIGRATION.md", "CONFORMANCE.md", "SECURITY.md", "LICENSE.md", "LICENSES/", "SPEC_REVISION"],
   "scripts": {
     "build": "node scripts/build.mjs",
     "test": "npm run build && node --test dist/test/*.test.js",
-    "test:package": "npm run build && node scripts/check-package.mjs"
+    "test:package": "npm run build && node scripts/check-package.mjs",
+    "changeset": "changeset",
+    "changeset:status": "changeset status",
+    "release:check": "node scripts/release.mjs check",
+    "version:prepare": "node scripts/release.mjs prepare",
+    "test:release": "node scripts/check-release.mjs"
   },
   "dependencies": { "structured-headers": "2.1.1" },
-  "devDependencies": { "@types/node": "24.19.2", "typescript": "7.0.2" }
+  "devDependencies": { "@changesets/cli": "3.0.3", "@types/node": "24.19.2", "typescript": "7.0.2" }
 }

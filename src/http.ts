@@ -1,5 +1,5 @@
 import { parseItem, parseList, serializeList, Token } from "structured-headers";
-import { ProtocolError } from "./error.js";
+import { ObservationError, ProtocolError, type ObservationPhase } from "./error.js";
 import { DEFAULT_LIMITS, PROFILE, Verifier, validateLimits, type Limits } from "./evidence.js";
 import { integer, nonempty, object, parseObject } from "./json.js";
 import { Snapshot, type Evaluation, type Outcome } from "./prefix.js";
@@ -65,8 +65,9 @@ function problem(status: number, kind: string, title: string, outcomes?: readonl
     ...(outcomes ? { outcomes } : {}) }, { status, headers: { "Content-Type": "application/problem+json", "Cache-Control": "no-store",
     ...(outcomes ? { "Causal-Result": "unsatisfied" } : {}) } });
 }
-function protocolError(error: unknown): Response {
-  if (!(error instanceof ProtocolError) || error.code === "invalid-configuration") return ordinary(500);
+function protocolError(error: unknown, phase: ObservationPhase): Response {
+  if (!(error instanceof ProtocolError) || error.code === "invalid-configuration")
+    throw new ObservationError("verification-failed", phase, { cause: error });
   if (error.code === "too-large") return problem(431, "request-too-large", "Causal request exceeds configured limits");
   if (error.code === "not-observation") return problem(400, "not-observation", "Endpoint is not a supported observation");
   return problem(400, "invalid-requirements", "Invalid causal requirements");
@@ -80,26 +81,35 @@ export interface ObservationOptions {
   readonly verifier: Verifier;
   readonly subject: string;
   /** Current access check, invoked before selection and before response commitment.
-   * False produces 403; a thrown/rejected check produces 503. Log adapter failures
-   * inside the callback; exception messages are never included in the HTTP response. */
+   * False produces 403; a thrown/rejected check rejects with ObservationError.
+   * Its cause remains local. The host must handle it before writing a response. */
   readonly authorize: () => boolean | Promise<boolean>;
   readonly clock: () => bigint;
   readonly read: () => Snapshot<Representation> | Promise<Snapshot<Representation>>;
 }
 
-async function authorizationFailure(authorize: ObservationOptions["authorize"]): Promise<Response | undefined> {
+async function authorized(authorize: ObservationOptions["authorize"], phase: ObservationPhase): Promise<boolean> {
   try {
     const allowed = await authorize();
-    if (typeof allowed !== "boolean") return ordinary(503);
-    return allowed ? undefined : ordinary(403);
-  } catch { return ordinary(503); }
+    if (typeof allowed !== "boolean") throw new TypeError("authorize must resolve to a boolean");
+    return allowed;
+  } catch (cause) { throw new ObservationError("authorization-unavailable", phase, { cause }); }
 }
 
-/** One attempt; no progress wait. The transport and storage adapters retain their own obligations. */
+function readClock(clock: ObservationOptions["clock"], phase: ObservationPhase): bigint {
+  try {
+    const now = clock();
+    if (typeof now !== "bigint" || now < 0n) throw new TypeError("clock must return non-negative bigint UTC seconds");
+    return now;
+  } catch (cause) { throw new ObservationError("invalid-clock", phase, { cause }); }
+}
+
+/** One attempt; no progress wait. Local adapter/contract failures reject with
+ * ObservationError; denied access and protocol outcomes return HTTP responses.
+ * The host owns transport cancellation, bounded adapter work, and error handling. */
 export async function observe(options: ObservationOptions): Promise<Response> {
   const { request, target, designatedObservation, verifier, subject, authorize, clock, read } = options;
-  const initialDenial = await authorizationFailure(authorize);
-  if (initialDenial) return initialDenial;
+  if (!await authorized(authorize, "before-read")) return ordinary(403);
   let tokens: string[];
   try {
     if (nominated(request.headers)) throw new ProtocolError("invalid-requirements");
@@ -107,28 +117,41 @@ export async function observe(options: ObservationOptions): Promise<Response> {
     tokens = parseContext(field === null ? [] : [field], verifier.limits);
     if (request.method === "HEAD") throw new ProtocolError("invalid-requirements");
     if (!designatedObservation) throw new ProtocolError("not-observation");
-    const now = clock();
+    const now = readClock(clock, "before-read");
     for (const token of tokens) verifier.verify(token, subject, now);
-  } catch (error) { return protocolError(error); }
+  } catch (error) {
+    if (error instanceof ObservationError) throw error;
+    return protocolError(error, "before-read");
+  }
   let snapshot: Snapshot<Representation>;
   let representation: Representation;
   try {
     snapshot = await read();
-    if (snapshot.target !== target) return ordinary(503);
-    representation = { status: snapshot.representation.status, headers: new Headers(snapshot.representation.headers),
-      body: Uint8Array.from(snapshot.representation.body) };
-  } catch { return ordinary(503); }
-  const currentDenial = await authorizationFailure(authorize);
-  if (currentDenial) return currentDenial;
+  } catch (cause) { throw new ObservationError("read-unavailable", "read", { cause }); }
+  if (!(snapshot instanceof Snapshot)) throw new ObservationError("invalid-representation", "representation");
+  if (snapshot.target !== target) throw new ObservationError("snapshot-target-mismatch", "read");
+  try {
+    const value = snapshot.representation;
+    if (!value) throw new TypeError("snapshot representation is missing");
+    const { status, headers, body } = value;
+    if (!Number.isInteger(status) || !(headers instanceof Headers) || !(body instanceof Uint8Array))
+      throw new TypeError("snapshot representation must have an integer status, Headers, and Uint8Array body");
+    representation = { status, headers: new Headers(headers), body: Uint8Array.from(body) };
+  } catch (cause) { throw new ObservationError("invalid-representation", "representation", { cause }); }
+  if (!await authorized(authorize, "before-response")) return ordinary(403);
   let outcomes: (Evaluation & { index: number })[];
   try {
-    const now = clock();
+    const now = readClock(clock, "before-response");
     outcomes = tokens.map((token, index) => ({ ...snapshot.evaluate(verifier.verify(token, subject, now), now), index }));
-  } catch (error) { return protocolError(error); }
+  } catch (error) {
+    if (error instanceof ObservationError) throw error;
+    return protocolError(error, "before-response");
+  }
   if (!outcomes.every(o => o.outcome === "satisfied")) {
     return problem(outcomes.some(o => o.outcome === "failed") ? 503 : 412, "requirements-not-satisfied", "Causal requirements were not satisfied", outcomes);
   }
-  if (!allowedStatus(representation.status) || nominated(representation.headers)) return ordinary(500);
+  if (!allowedStatus(representation.status) || nominated(representation.headers))
+    throw new ObservationError("invalid-representation", "representation");
   const headers = representation.headers;
   headers.delete("causal-context");
   headers.set("Causal-Result", "satisfied"); headers.set("Cache-Control", "private, no-store");

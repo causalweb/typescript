@@ -19,12 +19,15 @@ function npm(args, cwd, capture = false) {
 
 try {
   const [packed] = JSON.parse(npm(["pack", "--json", "--ignore-scripts", "--pack-destination", scratch], root, true));
-  assert.ok(packed.files.some(file => file.path === "dist/src/index.d.ts"));
+  for (const required of ["dist/src/index.js", "dist/src/index.d.ts", "MIGRATION.md", "CHANGELOG.md", "LICENSE.md"])
+    assert.ok(packed.files.some(file => file.path === required), `missing package artifact: ${required}`);
   assert.ok(packed.files.every(file => !/^(test|scripts|node_modules)\//.test(file.path)), "development files leaked into the package");
   const consumer = join(scratch, "application");
   cpSync(join(root, "test", "consumer"), consumer, { recursive: true });
   writeFileSync(join(consumer, "package.json"), JSON.stringify({ name: "causalweb-consumer-test", version: "0.0.0", private: true, type: "module",
-    dependencies: { [manifest.name]: `file:../${packed.filename}` }, devDependencies: manifest.devDependencies }));
+    dependencies: { [manifest.name]: `file:../${packed.filename}` }, devDependencies: {
+      typescript: manifest.devDependencies.typescript, "@types/node": manifest.devDependencies["@types/node"],
+    } }));
   npm(["install", "--ignore-scripts", "--no-audit", "--no-fund"], consumer);
   execFileSync(process.execPath, [join(consumer, "node_modules", "typescript", "bin", "tsc"), "--project", "tsconfig.json"],
     { cwd: consumer, env: environment, stdio: "inherit" });

@@ -1,9 +1,12 @@
 # Changelog
 
-## Unreleased
+Pending release notes now live in [.changeset](.changeset/README.md) and are generated into version entries by Changesets. No release has been published.
 
+## Pre-Changesets engineering history
+
+- Preserve local observer failures as `ObservationError` with original cause, safe code/phase metadata, and explicit `toResponse()` conversion. This breaks the unreleased rejection contract; hosts must install the documented error boundary. Protocol HTTP outcomes and wire revision are unchanged. Invalid JavaScript representation bodies are rejected rather than coerced into confirmed bytes.
 - Release the client problem-body reader on completion, rejection, size limits, and abort; regression assertions use real HTTP responses.
-- Fail closed with ordinary 503 responses for synchronous/asynchronous authorization outages at both authorization checks; false still means 403. Do not expose exception text or application data.
+- Detect synchronous/asynchronous authorization outages at both checks; safe conversion returns ordinary 503, while false still means 403. Do not expose exception text or application data.
 - Keep issuer configuration/key references in runtime-private fields and freeze issuer instances.
 - Clean generated output before builds; install the real `.tgz` into an isolated consumer and check strict Node-only types, negative type cases, and runtime behavior in Linux/Windows CI. No public TypeScript API or wire revision changes.
 - Implement an independent Node.js ES256 producer/consumer and prefix evaluator without a Rust runtime dependency.

@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { test } from "node:test";
 import { readFileSync } from "node:fs";
 import { createPublicKey, generateKeyPairSync, sign } from "node:crypto";
-import { CLAIM, PROFILE, Verifier, Issuer, DEFAULT_LIMITS, ProtocolError, Snapshot, sourceKey, position,
+import { CLAIM, PROFILE, Verifier, Issuer, DEFAULT_LIMITS, ProtocolError, ObservationError, Snapshot, sourceKey, position,
   parseContext, serializeContext, acceptConfirmation, observe, requestHeaders, type Frontier, type Mapping, type Representation } from "../src/index.js";
 
 const ISSUER = "https://issuer.example", DOMAIN = `${ISSUER}/domains/a`, OTHER = `${ISSUER}/domains/b`;
@@ -165,19 +165,31 @@ test("structured fields preserve all evidence and reject prohibited forms", () =
   assert.deepEqual(parseContext(['"a"', '"b"']), ["a", "b"]);
 });
 
-test("authorization outages fail closed before selection and after a read", async () => {
+test("authorization outages retain local causes and convert to safe responses at both checks", async () => {
   const keys = pair(), consumer = verifier(keys.publicKey);
   const request = { method: "GET", headers: requestHeaders([rawSign(keys.privateKey, JSON.stringify(claims()))]) };
   for (const failAt of [1, 2]) {
     for (const asynchronous of [false, true]) {
       let checks = 0, reads = 0;
-      const response = await observe({ request, target: TARGET, designatedObservation: true, verifier: consumer, subject: SUBJECT,
+      const failure = new Error("private authorization backend credential");
+      let local: ObservationError | undefined;
+      await assert.rejects(observe({ request, target: TARGET, designatedObservation: true, verifier: consumer, subject: SUBJECT,
         authorize: () => {
           if (++checks !== failAt) return true;
-          const failure = new Error("private authorization backend credential");
           if (asynchronous) return Promise.reject(failure);
           throw failure;
-        }, clock: () => 100n, read: () => { reads++; return snapshot([5n]); } });
+        }, clock: () => 100n, read: () => { reads++; return snapshot([5n]); } }), error => {
+          assert.ok(error instanceof ObservationError);
+          assert.equal(error.code, "authorization-unavailable");
+          assert.equal(error.phase, failAt === 1 ? "before-read" : "before-response");
+          assert.equal(error.cause, failure);
+          assert.ok(!JSON.stringify(error).includes("private"));
+          assert.ok(!error.message.includes("private"));
+          local = error;
+          return true;
+        });
+      assert.ok(local);
+      const response = local.toResponse();
       assert.equal(response.status, 503);
       assert.equal(response.headers.has("causal-result"), false);
       assert.equal(response.headers.get("cache-control"), "no-store");
@@ -185,7 +197,66 @@ test("authorization outages fail closed before selection and after a read", asyn
       assert.equal(reads, failAt === 1 ? 0 : 1);
     }
   }
-  const response = await observe({ request, target: TARGET, designatedObservation: true, verifier: consumer, subject: SUBJECT,
-    authorize: (() => "yes") as unknown as () => boolean, clock: () => 100n, read: () => { throw new Error("must not read"); } });
-  assert.equal(response.status, 503);
+  await assert.rejects(observe({ request, target: TARGET, designatedObservation: true, verifier: consumer, subject: SUBJECT,
+    authorize: (() => "yes") as unknown as () => boolean, clock: () => 100n, read: () => { throw new Error("must not read"); } }),
+  { code: "authorization-unavailable", phase: "before-read" });
+});
+
+test("read and clock failures preserve diagnostics instead of becoming causal outcomes", async () => {
+  const keys = pair(), consumer = verifier(keys.publicKey);
+  const request = { method: "GET", headers: requestHeaders([rawSign(keys.privateKey, JSON.stringify(claims()))]) };
+  const base = { request, target: TARGET, designatedObservation: true, verifier: consumer, subject: SUBJECT,
+    authorize: () => true, clock: () => 100n, read: () => snapshot([5n]) };
+  const cause = new Error("private backend password");
+  for (const asynchronous of [false, true]) {
+    let local: ObservationError | undefined;
+    await assert.rejects(observe({ ...base, read: () => { if (asynchronous) return Promise.reject(cause); throw cause; } }), error => {
+      assert.ok(error instanceof ObservationError);
+      assert.equal(error.code, "read-unavailable"); assert.equal(error.phase, "read"); assert.equal(error.cause, cause);
+      local = error; return true;
+    });
+    assert.ok(local);
+    const response = local.toResponse();
+    assert.equal(response.status, 503); assert.equal(response.headers.has("causal-result"), false);
+    assert.equal(response.headers.get("cache-control"), "no-store"); assert.equal(await response.text(), "");
+  }
+  for (const thrown of [null, "non-Error adapter rejection", new ProtocolError("invalid-evidence")]) {
+    await assert.rejects(observe({ ...base, read: () => { throw thrown; } }), error => {
+      assert.ok(error instanceof ObservationError);
+      assert.equal(error.code, "read-unavailable"); assert.equal(error.cause, thrown);
+      assert.equal(error.toResponse().status, 503); return true;
+    });
+  }
+  for (const failAt of [1, 2]) {
+    let ticks = 0;
+    await assert.rejects(observe({ ...base, clock: () => { if (++ticks === failAt) throw cause; return 100n; } }), error => {
+      assert.ok(error instanceof ObservationError);
+      assert.equal(error.code, "invalid-clock"); assert.equal(error.phase, failAt === 1 ? "before-read" : "before-response");
+      assert.equal(error.cause, cause); assert.equal(error.toResponse().status, 500); return true;
+    });
+  }
+  await assert.rejects(observe({ ...base, clock: (() => 100) as unknown as () => bigint }), { code: "invalid-clock" });
+});
+
+test("snapshot contract errors are local and malformed JavaScript bodies cannot be coerced into confirmed bytes", async () => {
+  const keys = pair(), consumer = verifier(keys.publicKey);
+  const request = { method: "GET", headers: requestHeaders([rawSign(keys.privateKey, JSON.stringify(claims()))]) };
+  const base = { request, target: TARGET, designatedObservation: true, verifier: consumer, subject: SUBJECT,
+    authorize: () => true, clock: () => 100n, read: () => snapshot([5n]) };
+  await assert.rejects(observe({ ...base, target: "/wrong" }), error => {
+    assert.ok(error instanceof ObservationError); assert.equal(error.code, "snapshot-target-mismatch");
+    assert.equal(error.toResponse().status, 503); return true;
+  });
+  for (const body of ["not bytes", [1, 2, 3], null, new ArrayBuffer(4)]) {
+    await assert.rejects(observe({ ...base, read: () => snapshot([5n], {
+      status: 200, headers: new Headers(), body: body as unknown as Uint8Array,
+    }) }), error => {
+      assert.ok(error instanceof ObservationError); assert.equal(error.code, "invalid-representation");
+      assert.equal(error.toResponse().status, 500); assert.equal(error.toResponse().headers.has("causal-result"), false); return true;
+    });
+  }
+  for (const status of [202, 304]) {
+    await assert.rejects(observe({ ...base, read: () => snapshot([5n], { status, headers: new Headers(), body: new Uint8Array() }) }),
+      { code: "invalid-representation", phase: "representation" });
+  }
 });
