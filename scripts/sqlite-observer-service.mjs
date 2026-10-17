@@ -16,6 +16,8 @@ const DOMAIN = "https://typescript-sqlite-orders.example/domains/orders";
 const TARGET = "/orders";
 const MAX_DELIVERY_BYTES = 16_384;
 
+class DeliveryTooLarge extends Error {}
+
 function argument(name) {
   const index = process.argv.indexOf(name);
   if (index < 0 || !process.argv[index + 1]) throw new Error(`${name} is required`);
@@ -126,7 +128,7 @@ async function body(request) {
   for await (const chunk of request) {
     const bytes = Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk);
     length += bytes.length;
-    if (length > MAX_DELIVERY_BYTES) throw new Error("delivery too large");
+    if (length > MAX_DELIVERY_BYTES) throw new DeliveryTooLarge("delivery too large");
     chunks.push(bytes);
   }
   return Buffer.concat(chunks).toString("utf8");
@@ -285,8 +287,8 @@ const server = createServer((request, response) => {
         deliver(deliveryEvent);
         if (url.searchParams.has("crash-after-apply")) process.exit(87);
         respond(response, 204);
-      } catch {
-        respond(response, 400);
+      } catch (error) {
+        respond(response, error instanceof DeliveryTooLarge ? 413 : 400);
       }
       return;
     }

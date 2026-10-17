@@ -142,6 +142,14 @@ test("independent SQLite source and observer processes preserve committed causal
     412,
     await staleAfterUnauthorizedDelivery.text(),
   );
+  const oversized = await fetch(`${observerOrigin}/deliver`, {
+    method: "POST",
+    headers: { authorization: `Bearer ${credential}`, "content-type": "application/json" },
+    body: Buffer.alloc(16_385),
+  });
+  assert.equal(oversized.status, 413);
+  const staleAfterOversizedDelivery = await constrained(observerOrigin, first.evidence);
+  assert.equal(staleAfterOversizedDelivery.status, 412, await staleAfterOversizedDelivery.text());
   assert.equal(
     (await deliver(observerOrigin, { ...first, order: "altered" }, credential)).status,
     400,
