@@ -148,13 +148,15 @@ async function readFailure(response: Response, count: number): Promise<FailurePr
   const reader = response.body?.getReader();
   if (!reader) throw new ProtocolError("unconfirmed");
   const chunks: Uint8Array[] = []; let size = 0;
-  while (true) {
-    const { value, done } = await reader.read();
-    if (done) break;
-    size += value.length;
-    if (size > 65536) { await reader.cancel(); throw new ProtocolError("too-large"); }
-    chunks.push(value);
-  }
+  try {
+    while (true) {
+      const { value, done } = await reader.read();
+      if (done) break;
+      size += value.length;
+      if (size > 65536) { await reader.cancel().catch(() => {}); throw new ProtocolError("too-large"); }
+      chunks.push(value);
+    }
+  } finally { reader.releaseLock(); }
   try {
     const body = parseObject(Buffer.concat(chunks), 32);
     if (body.type !== "https://github.com/causalweb/spec/problems/requirements-not-satisfied"

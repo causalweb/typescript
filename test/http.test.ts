@@ -35,6 +35,8 @@ test("real loopback HTTP rejects stale state, then confirms the same dependency"
   const token = producer.issueCommitted({ subject: "test-subject", audiences: ["https://view.example/causal"], domain, position: 5n, issuedAt: 1n, expiresAt: 1000n }, 100n);
   const stale = await fetchObservation(`${base}/view`, [token], testAuthentication);
   assert.equal(stale.kind, "causal-failure");
+  assert.equal(stale.response.bodyUsed, true);
+  assert.equal(stale.response.body?.locked, false, "the SDK must release its body reader");
   if (stale.kind === "causal-failure") { assert.equal(stale.problem.status, 412); assert.equal(stale.problem.outcomes[0]?.outcome, "unsatisfied"); }
   frontier = 5n;
   const fresh = await fetchObservation(`${base}/view`, [token], testAuthentication);
@@ -62,14 +64,24 @@ test("malformed outcome order, excessive problems, and cancelled exchanges fail 
   const server = createServer((req, res) => {
     if (req.url === "/cancel") return;
     res.writeHead(412, { "Causal-Result": "unsatisfied", "Content-Type": "application/problem+json", "Cache-Control": "no-store" });
+    if (req.url === "/body-cancel") { res.write('{"partial":'); return; }
     if (req.url === "/large") res.end(" ".repeat(65537));
     else res.end(JSON.stringify({ type: "https://github.com/causalweb/spec/problems/requirements-not-satisfied", title: "Not satisfied", status: 412,
       outcomes: [{ index: 1, outcome: "unsatisfied", retryable: true }] }));
   });
   t.after(() => { server.closeAllConnections(); server.close(); });
   const origin = await listen(server);
-  await assert.rejects(fetchObservation(`${origin}/order`, ["test"], testAuthentication), { code: "unconfirmed" });
-  await assert.rejects(fetchObservation(`${origin}/large`, ["test"], testAuthentication), { code: "too-large" });
+  const inspected: Response[] = [];
+  const authentication = { authenticated: (response: Response) => { inspected.push(response); return true; } };
+  for (const [path, code] of [["order", "unconfirmed"], ["large", "too-large"]]) {
+    await assert.rejects(fetchObservation(`${origin}/${path}`, ["test"], authentication), { code });
+    assert.equal(inspected.at(-1)?.body?.locked, false, `body reader retained after ${path}`);
+  }
+  const controller = new AbortController();
+  await assert.rejects(fetchObservation(`${origin}/body-cancel`, ["test"], {
+    request: { signal: controller.signal }, authenticated: response => { inspected.push(response); controller.abort(); return true; },
+  }));
+  assert.equal(inspected.at(-1)?.body?.locked, false, "body reader retained after cancellation");
   await assert.rejects(fetchObservation(`${origin}/cancel`, ["test"], { ...testAuthentication, request: { signal: AbortSignal.timeout(20) } }));
 });
 

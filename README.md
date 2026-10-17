@@ -57,7 +57,7 @@ if (result.kind === "confirmed") {
 
 The application supplies its existing authentication check; evidence does not grant access. The helper sends `no-cache, no-store`, never follows redirects, imposes a ten-second exchange deadline, and permits earlier cancellation through `request.signal`. It rejects plaintext transport except literal loopback (`127.0.0.1` or `::1`) for protected local development. Integrations using another administratively protected channel can use the lower-level field/confirmation helpers with an explicitly reviewed transport.
 
-For causal failures, the helper consumes and validates the bounded problem body and returns it as `result.problem`; `response.body` is then consumed. Confirmed response bodies remain available. Do not turn an error into an unconstrained retry without an explicit caller decision.
+For causal failures, the helper consumes and validates the bounded problem body and returns it as `result.problem`; `response.body` is then consumed and its reader lock is released. Confirmed response bodies remain available and belong to the caller, who must consume or cancel them. Do not turn an error into an unconstrained retry without an explicit caller decision.
 
 ## Producer and observer responsibilities
 
