@@ -26,7 +26,8 @@ type PositionCase =
 type ReductionCase = {
   id: string;
   kind: "context-reduction";
-  evidence: { position: string }[];
+  evidence: { domain: Domain; position: string; exp: number }[];
+  required_usable_until: number;
   allowed_retained_positions: string[][];
 };
 type EvaluationCase = {

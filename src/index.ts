@@ -16,6 +16,7 @@ export {
   MAX_POSITION,
   PROFILE,
   position,
+  retainedContextIndices,
   type VerifiedEvidence,
   Verifier,
 } from "./evidence.js";

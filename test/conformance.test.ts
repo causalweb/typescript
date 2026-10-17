@@ -15,6 +15,7 @@ import {
   position,
   type Representation,
   requestHeaders,
+  retainedContextIndices,
   Snapshot,
   serializeContext,
   sourceKey,
@@ -140,7 +141,22 @@ test("all twenty pinned prefix/composition fixtures", () => {
       continue;
     }
     if (entry.kind === "context-reduction") {
-      const retained = entry.evidence.map((e) => e.position);
+      const verified = entry.evidence.map((item, index) => {
+        const c = claims(item.position);
+        c[CLAIM].domain = vectors[item.domain];
+        c.exp = item.exp;
+        c.jti = `urn:test:context:${entry.id}:${index}`;
+        return consumer.verify(rawSign(keys.privateKey, JSON.stringify(c)), SUBJECT, 100n);
+      });
+      const retained = retainedContextIndices(
+        verified,
+        100n,
+        BigInt(entry.required_usable_until),
+      ).map((index) => {
+        const retainedEvidence = verified[index];
+        assert.ok(retainedEvidence);
+        return retainedEvidence.position;
+      });
       assert.ok(
         entry.allowed_retained_positions.some(
           (allowed) => JSON.stringify(allowed) === JSON.stringify(retained),
@@ -204,6 +220,28 @@ test("all twenty pinned prefix/composition fixtures", () => {
       entry.id,
     );
   }
+});
+
+test("carrier reduction preserves non-dominant verified evidence", () => {
+  const keys = pair(),
+    consumer = verifier(keys.publicKey),
+    signEvidence = (positionValue: string, expiresAt: number, domain = DOMAIN) => {
+      const c = claims(positionValue);
+      c.exp = expiresAt;
+      c[CLAIM].domain = domain;
+      return consumer.verify(rawSign(keys.privateKey, JSON.stringify(c)), SUBJECT, 100n);
+    };
+  const lower = signEvidence("5", 300);
+  const higher = signEvidence("8", 300);
+  assert.deepEqual(retainedContextIndices([lower, higher], 100n, 180n), [1]);
+  assert.deepEqual(retainedContextIndices([higher, lower], 100n, 180n), [0]);
+  assert.deepEqual(retainedContextIndices([lower, signEvidence("8", 150)], 100n, 180n), [0, 1]);
+  assert.deepEqual(
+    retainedContextIndices([lower, signEvidence("8", 300, OTHER)], 100n, 180n),
+    [0, 1],
+  );
+  assert.deepEqual(retainedContextIndices([lower, higher], 300n, 300n), [0, 1]);
+  assert.throws(() => retainedContextIndices([lower], 100n, 99n), ProtocolError);
 });
 
 test("all twelve pinned HTTP response fixtures", () => {

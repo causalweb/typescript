@@ -23,7 +23,7 @@ The only configured algorithm is ES256. Unknown protected-header parameters are 
 
 Positions and dates use exact arithmetic. Unknown authenticated profiles keep their position opaque and yield `unsupported` after expiry precedence. Numeric frontiers cover every relevant component; unknown lineage blocks a positive claim. Exclusions are trusted adapter statements bound to the snapshot's versioned contract/schema and a position interval.
 
-No deliberate progress waiting, context reduction, online revocation lookup, or background key discovery is implemented. Policy must be current at request time and remain authorized through response commitment. Do not cache verified evidence across revocation or authorization changes.
+No deliberate progress waiting, online revocation lookup, or background key discovery is implemented. `retainedContextIndices` performs the optional Prefix Profile carrier reduction only after the caller has verified each input under current policy. It returns indices into the caller's original token list, preserves order, and retains any item it cannot safely omit; callers must never synthesize a replacement token. Policy must be current at request time and remain authorized through response commitment. Do not cache verified evidence across revocation or authorization changes.
 
 ## Not yet claimed
 

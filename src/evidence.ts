@@ -120,8 +120,82 @@ class CheckedEvidence {
     if (typeof now !== "bigint" || now < 0n) throw new ProtocolError("invalid-configuration");
     return now >= this.expiresAt + this.#skew;
   }
+
+  static retainedContextIndices(
+    evidence: readonly VerifiedEvidence[],
+    now: bigint,
+    requiredUsableUntil: bigint,
+  ): readonly number[] {
+    if (
+      typeof now !== "bigint" ||
+      now < 0n ||
+      typeof requiredUsableUntil !== "bigint" ||
+      requiredUsableUntil < now ||
+      evidence.some((item) => !(item instanceof CheckedEvidence))
+    )
+      throw new ProtocolError("invalid-configuration");
+    return Object.freeze(
+      evidence.flatMap((dominated, index) =>
+        evidence.some(
+          (candidate, candidateIndex) =>
+            candidateIndex !== index &&
+            CheckedEvidence.#dominates(candidate, dominated, now, requiredUsableUntil) &&
+            (position(candidate.position) > position(dominated.position) || candidateIndex < index),
+        )
+          ? []
+          : [index],
+      ),
+    );
+  }
+
+  static #dominates(
+    candidate: CheckedEvidence,
+    dominated: CheckedEvidence,
+    now: bigint,
+    requiredUsableUntil: bigint,
+  ): boolean {
+    if (candidate.expired(now) || dominated.expired(now)) return false;
+    const candidateCausal = object(candidate.#claims[CLAIM]);
+    const dominatedCausal = object(dominated.#claims[CLAIM]);
+    const audiences = (claims: JsonObject) => {
+      const value = claims.aud;
+      const values: string[] = typeof value === "string" ? [value] : (value as string[]);
+      return [...values].sort();
+    };
+    const candidateAudiences = audiences(candidate.#claims);
+    const dominatedAudiences = audiences(dominated.#claims);
+    const dominates =
+      candidate.#claims.iss === dominated.#claims.iss &&
+      candidate.#claims.sub === dominated.#claims.sub &&
+      integer(candidateCausal.v, 1n) === integer(dominatedCausal.v, 1n) &&
+      candidateCausal.profile === PROFILE &&
+      candidateCausal.profile === dominatedCausal.profile &&
+      candidateCausal.domain === dominatedCausal.domain &&
+      candidateCausal.commit === dominatedCausal.commit &&
+      candidateAudiences.length === dominatedAudiences.length &&
+      candidateAudiences.every((audience, index) => audience === dominatedAudiences[index]) &&
+      position(candidate.position) >= position(dominated.position) &&
+      candidate.expiresAt + candidate.#skew > requiredUsableUntil;
+    return dominates;
+  }
 }
 export type VerifiedEvidence = CheckedEvidence;
+
+/**
+ * Returns ordered indices of verified evidence that a carrier MUST retain.
+ *
+ * Verify every input under the current intended policy first, then use these indices to retain
+ * the original compact evidence strings unchanged. `requiredUsableUntil` is an absolute UTC
+ * second through which every retained dominant item must remain usable. The function does not
+ * issue, rewrite, or validate raw evidence, and it preserves items it cannot safely omit.
+ */
+export function retainedContextIndices(
+  evidence: readonly VerifiedEvidence[],
+  now: bigint,
+  requiredUsableUntil: bigint,
+): readonly number[] {
+  return CheckedEvidence.retainedContextIndices(evidence, now, requiredUsableUntil);
+}
 
 function p256Key(key: KeyObject, type: "public" | "private"): boolean {
   return (
