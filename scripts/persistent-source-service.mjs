@@ -1,4 +1,4 @@
-import { randomUUID } from "node:crypto";
+import { createPrivateKey, randomUUID, sign } from "node:crypto";
 import { mkdirSync, readFileSync, renameSync, writeFileSync } from "node:fs";
 import { createServer } from "node:http";
 import { dirname } from "node:path";
@@ -21,10 +21,21 @@ const statePath = argument("--state");
 const now = BigInt(argument("--now"));
 const bind = argument("--listen");
 const privateJwk = JSON.parse(process.env.CAUSALWEB_DEMO_PRIVATE_JWK ?? "");
-const key = await import("node:crypto").then(({ createPrivateKey }) =>
-  createPrivateKey({ key: privateJwk, format: "jwk" }),
-);
+const key = createPrivateKey({ key: privateJwk, format: "jwk" });
 const issuer = new Issuer(ISSUER, KID, key, new Set([DOMAIN]), LIFETIME);
+
+function deliveryProof(event) {
+  const header = Buffer.from(
+    JSON.stringify({ alg: "ES256", kid: KID, typ: "causalweb-demo-delivery+jwt" }),
+  ).toString("base64url");
+  const payload = Buffer.from(JSON.stringify(event)).toString("base64url");
+  const input = `${header}.${payload}`;
+  return `${input}.${sign("sha256", Buffer.from(input), { key, dsaEncoding: "ieee-p1363" }).toString("base64url")}`;
+}
+
+function delivery(event) {
+  return { ...event, deliveryProof: deliveryProof(event) };
+}
 
 function initial() {
   return { nextPosition: "1", events: [] };
@@ -125,7 +136,7 @@ const server = createServer((request, response) => {
       return;
     }
     if (request.method === "POST" && url.pathname === "/recover") {
-      respond(response, 200, recover());
+      respond(response, 200, recover().map(delivery));
       return;
     }
     const order = url.pathname.match(/^\/orders\/([a-z0-9-]+)$/)?.[1];
@@ -134,7 +145,7 @@ const server = createServer((request, response) => {
         interruptAfterCommit: url.searchParams.has("interrupt-after-commit"),
         crashAfterCommit: url.searchParams.has("crash-after-commit"),
       });
-      respond(response, 201, event, {
+      respond(response, 201, delivery(event), {
         "causal-context": serializeContext([event.evidence]),
         "cache-control": "private, no-store",
       });

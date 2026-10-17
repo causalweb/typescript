@@ -416,13 +416,15 @@ if (persistentSourceChecked) {
       return waitForOrigin(observer, "Rust observer");
     };
     const deliver = async (origin, event, path = "/deliver", credential = deliveryCredential) => {
+      const { deliveryProof, ...sourceEvent } = event;
+      assert.equal(typeof deliveryProof, "string", "source event lacks a delivery proof");
       const response = await fetch(`${origin}${path}`, {
         method: "POST",
         headers: {
           "content-type": "application/json",
           ...(credential === null ? {} : { authorization: `Bearer ${credential}` }),
         },
-        body: JSON.stringify(event),
+        body: JSON.stringify({ event: sourceEvent, proof: deliveryProof }),
       });
       return response.status;
     };
@@ -461,6 +463,11 @@ if (persistentSourceChecked) {
       authenticated: () => true,
     });
     assert.equal(stillStale.kind, "causal-failure");
+    assert.equal(
+      await deliver(observerOrigin, { ...first, order: "altered" }),
+      400,
+      "a proof must not authorize an altered event payload",
+    );
     const observerCrash = waitForExit(observer);
     await assert.rejects(deliver(observerOrigin, first, "/deliver?crash-after-apply"));
     assert.equal(await observerCrash, 86);

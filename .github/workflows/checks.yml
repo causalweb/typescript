@@ -64,7 +64,7 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           repository: causalweb/rust
-          ref: b675260ffe2205e4d8d19b25c9b87f6a25614333
+          ref: d0cda2991f9f8c5c2a312045796e5737a51dfbcb
           path: .rust
           persist-credentials: false
       - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
