@@ -121,7 +121,7 @@ This is compatibility evidence for the Node bridge, not a Nest module, intercept
 
 Use `bigint` for positions, NumericDates, lifetime, skew, and the UTC clock. The implementation validates incoming decimal number spellings exactly instead of rounding through `JSON.parse`. Default request limits are 16 items, 16,384 combined field bytes, 8,192 token bytes, 8,192 decoded bytes, and JSON depth 32. Lifetime and skew are mandatory explicit trust settings. Problem responses are limited to 65,536 bytes.
 
-Observers make one attempt and advertise `max_wait_seconds: 0`. `Prefer: wait` is ignored. No carrier reduction is performed: evidence order, duplicate indices, and independent domains are preserved.
+Observers make one attempt and advertise `max_wait_seconds: 0`. `Prefer: wait` is ignored. A carrier can opt into the Prefix Profile's safe reduction rule with `retainedContextIndices` only after it has verified each evidence item under current policy. The helper returns indices into the original ordered compact-token list; it never rewrites or synthesizes evidence and retains every item it cannot safely omit. Observation evaluation itself preserves request order and duplicate indices.
 
 Read [CONFORMANCE.md](CONFORMANCE.md), [SECURITY.md](SECURITY.md), and [RELEASING.md](RELEASING.md) before deployment. The Node.js implementation is not yet a browser/WebCrypto package. Discussion belongs in [Causal Web Discussions](https://github.com/orgs/causalweb/discussions).
 
