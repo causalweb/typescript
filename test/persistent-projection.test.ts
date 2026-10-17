@@ -9,6 +9,7 @@ import {
   contextHeaders,
   fetchObservation,
   Issuer,
+  type Mapping,
   ObservationError,
   observe,
   parseContext,
@@ -39,6 +40,7 @@ type SourceState = Readonly<{
 }>;
 type ProjectionState = Readonly<{
   frontier: string;
+  lineage: "known" | "unknown";
   orders: readonly string[];
   applied: readonly string[];
   pending: readonly SourceEvent[];
@@ -47,6 +49,7 @@ type ProjectionState = Readonly<{
 const sourceInitial = (): SourceState => ({ nextPosition: "1", events: [] });
 const projectionInitial = (): ProjectionState => ({
   frontier: "0",
+  lineage: "known",
   orders: [],
   applied: [],
   pending: [],
@@ -89,10 +92,14 @@ function sourceState(value: unknown): SourceState {
 
 function projectionState(value: unknown): ProjectionState {
   const state = object(value);
+  const lineage = text(state.lineage, "lineage");
+  if (lineage !== "known" && lineage !== "unknown")
+    assert.fail("durable state has invalid lineage");
   const orders = values(state.orders, "orders").map((value) => text(value, "order"));
   const applied = values(state.applied, "applied").map((value) => text(value, "applied event"));
   return {
     frontier: text(state.frontier, "frontier"),
+    lineage,
     orders,
     applied,
     pending: values(state.pending, "pending").map(sourceEvent),
@@ -257,29 +264,41 @@ class ProjectionService {
       pending.splice(pending.indexOf(next), 1);
       current = next;
     }
-    await this.#state.replace({ frontier: frontier.toString(), orders, applied, pending });
+    await this.#state.replace({
+      ...state,
+      frontier: frontier.toString(),
+      orders,
+      applied,
+      pending,
+    });
   }
 
   async snapshot(): Promise<Snapshot<Representation>> {
     const state = await this.#state.load();
     // `state` is one atomically replaced document: representation bytes and frontier share this cut.
     const body = Buffer.from(JSON.stringify({ orders: state.orders, frontier: state.frontier }));
+    const mapping: Mapping = {
+      kind: "relevant",
+      frontiers: [state.lineage === "known" ? BigInt(state.frontier) : "unknown"],
+      progressPossible: true,
+    };
     return new Snapshot(
       TARGET,
       { status: 200, headers: new Headers({ "Content-Type": "application/json" }), body },
       "persistent-file/v1",
       "orders/v1",
-      new Map([
-        [
-          sourceKey(ISSUER, DOMAIN),
-          { kind: "relevant", frontiers: [BigInt(state.frontier)], progressPossible: true },
-        ],
-      ]),
+      new Map([[sourceKey(ISSUER, DOMAIN), mapping]]),
     );
   }
 
   async state(): Promise<ProjectionState> {
     return this.#state.load();
+  }
+
+  /** Simulates a recovered projection whose representation survived but source lineage did not. */
+  async loseLineage(): Promise<void> {
+    const state = await this.#state.load();
+    await this.#state.replace({ ...state, lineage: "unknown" });
   }
 
   async constrainedObservation(request: Pick<Request, "method" | "headers">): Promise<Response> {
@@ -433,6 +452,7 @@ test("two durable local services reject stale reads, recover, and preserve sourc
   await projection.deliver(second);
   assert.deepEqual(await projection.state(), {
     frontier: "3",
+    lineage: "known",
     orders: ["first", "second", "third"],
     applied: [first.id, second.id, third.id],
     pending: [],
@@ -499,5 +519,29 @@ test("two durable local services reject stale reads, recover, and preserve sourc
       orders: ["first", "second", "third", "recovered"],
       frontier: "4",
     });
+
+  // Representation bytes survived, but this projection can no longer establish their source lineage.
+  await projection.loseLineage();
+  const unknown = await fetchObservation(`${restartedProjection}${TARGET}`, [fourth.evidence], {
+    authenticated: () => true,
+  });
+  assert.equal(unknown.kind, "causal-failure");
+  if (unknown.kind === "causal-failure")
+    assert.equal(unknown.problem.outcomes[0]?.outcome, "unknown");
+
+  close(projectionServer);
+  projection = new ProjectionService(join(root, "projection"), publicKey);
+  projectionServer = projectionHttp(projection);
+  const restartedWithoutLineage = await listen(projectionServer);
+  const stillUnknown = await fetchObservation(
+    `${restartedWithoutLineage}${TARGET}`,
+    [fourth.evidence],
+    {
+      authenticated: () => true,
+    },
+  );
+  assert.equal(stillUnknown.kind, "causal-failure");
+  if (stillUnknown.kind === "causal-failure")
+    assert.equal(stillUnknown.problem.outcomes[0]?.outcome, "unknown");
   assert.equal(restartedSource.startsWith("http://127.0.0.1:"), true);
 });
