@@ -302,7 +302,7 @@ if (persistentSourceChecked) {
         return false;
       }
     };
-    const signRustDelivery = (event) => {
+    const signRustDelivery = ({ deliveryProof: _ignoredProof, ...event }) => {
       const header = Buffer.from(
         JSON.stringify({ alg: "ES256", kid: first.kid, typ: "causalweb-demo-delivery+jwt" }),
       ).toString("base64url");
@@ -421,6 +421,16 @@ if (persistentSourceChecked) {
       if (stale.kind === "causal-failure")
         assert.equal(stale.problem.outcomes[0].outcome, "unsatisfied");
       assert.equal(await deliverRustEvent({ ...event, order: "altered" }), 400);
+      const [evidenceHeader, evidencePayload, evidenceSignature] = event.evidence.split(".");
+      assert.ok(evidenceHeader && evidencePayload && evidenceSignature);
+      const forgedEvidence = `${evidenceHeader}.${evidencePayload}.${
+        evidenceSignature.startsWith("A") ? "B" : "A"
+      }${evidenceSignature.slice(1)}`;
+      assert.equal(
+        await deliverRustEvent(signRustDelivery({ ...event, evidence: forgedEvidence })),
+        400,
+        "a valid delivery proof must not authorize forged causal evidence",
+      );
       assert.equal(await deliverRustEvent(event), 204);
       assert.equal(await deliverRustEvent(event), 204, "duplicate delivery must be harmless");
       assert.equal(
