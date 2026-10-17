@@ -413,14 +413,18 @@ if (persistentSourceChecked) {
       );
       return waitForOrigin(observer, "Rust observer");
     };
-    const deliver = async (origin, event) => {
-      const response = await fetch(`${origin}/deliver`, {
+    const deliver = async (origin, event, path = "/deliver") => {
+      const response = await fetch(`${origin}${path}`, {
         method: "POST",
         headers: { "content-type": "application/json" },
         body: JSON.stringify(event),
       });
       return response.status;
     };
+    const waitForExit = (child) =>
+      child.exitCode === null
+        ? new Promise((resolve) => child.once("exit", resolve))
+        : Promise.resolve(child.exitCode);
     const stop = async (child, origin) => {
       const response = await fetch(`${origin}/shutdown`, { method: "POST" });
       assert.equal(response.status, 204);
@@ -443,7 +447,10 @@ if (persistentSourceChecked) {
     assert.equal(stale.kind, "causal-failure");
     if (stale.kind === "causal-failure")
       assert.equal(stale.problem.outcomes[0].outcome, "unsatisfied");
-    assert.equal(await deliver(observerOrigin, first), 204);
+    const observerCrash = waitForExit(observer);
+    await assert.rejects(deliver(observerOrigin, first, "/deliver?crash-after-apply"));
+    assert.equal(await observerCrash, 86);
+    observerOrigin = await startObserver();
     const confirmedFirst = await fetchObservation(`${observerOrigin}/orders`, [firstEvidence], {
       authenticated: () => true,
     });
@@ -481,10 +488,12 @@ if (persistentSourceChecked) {
     const forged = `${third.evidence.slice(0, -1)}${third.evidence.endsWith("A") ? "B" : "A"}`;
     assert.equal(await deliver(observerOrigin, { ...third, evidence: forged }), 400);
 
-    const interrupted = await fetch(`${sourceOrigin}/orders/recovered?interrupt-after-commit`, {
-      method: "POST",
-    });
-    assert.equal(interrupted.status, 500);
+    const sourceCrash = waitForExit(source);
+    await assert.rejects(
+      fetch(`${sourceOrigin}/orders/recovered?crash-after-commit`, { method: "POST" }),
+    );
+    assert.equal(await sourceCrash, 86);
+    sourceOrigin = await startSource();
     const recovered = await (await fetch(`${sourceOrigin}/recover`, { method: "POST" })).json();
     const recoveredEvent = recovered.at(-1);
     assert.ok(recoveredEvent?.evidence, "source recovery did not issue outbox evidence");

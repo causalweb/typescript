@@ -81,7 +81,7 @@ function evidenceFor(event) {
   };
 }
 
-function commit(order, interruptAfterCommit) {
+function commit(order, { interruptAfterCommit, crashAfterCommit }) {
   if (!/^[a-z0-9-]+$/.test(order)) throw new Error("invalid order");
   const state = load();
   const position = BigInt(state.nextPosition);
@@ -94,6 +94,7 @@ function commit(order, interruptAfterCommit) {
     evidence: "",
   };
   replace({ nextPosition: (position + 1n).toString(), events: [...state.events, event] });
+  if (crashAfterCommit) process.exit(86);
   if (interruptAfterCommit) throw new Error("injected interruption after durable source commit");
   const issued = evidenceFor(event);
   const recovered = load();
@@ -129,7 +130,10 @@ const server = createServer((request, response) => {
     }
     const order = url.pathname.match(/^\/orders\/([a-z0-9-]+)$/)?.[1];
     if (request.method === "POST" && order) {
-      const event = commit(order, url.searchParams.has("interrupt-after-commit"));
+      const event = commit(order, {
+        interruptAfterCommit: url.searchParams.has("interrupt-after-commit"),
+        crashAfterCommit: url.searchParams.has("crash-after-commit"),
+      });
       respond(response, 201, event, {
         "causal-context": serializeContext([event.evidence]),
         "cache-control": "private, no-store",
