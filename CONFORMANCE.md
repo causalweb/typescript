@@ -2,7 +2,9 @@
 
 Status: Experimental source preview; no full deployment conformance claim
 
-The normative input is draft `0.1.1-experimental`, with exact source and peer pins in [SPEC_REVISION](SPEC_REVISION) and [RUST_REVISION](RUST_REVISION). Shared vector revision: `0.1.2`.
+The normative input is draft `0.1.1-experimental`, with exact source, peer, and runner pins in [SPEC_REVISION](SPEC_REVISION), [RUST_REVISION](RUST_REVISION), and [CONFORMANCE_REVISION](CONFORMANCE_REVISION). Shared vector revision: `0.1.2`.
+
+The repository also provides a development-only JSON Lines adapter for the separate [`causalweb/conformance`](https://github.com/causalweb/conformance) runner's initial evidence-verification profile. Build first, then invoke its pinned runner with `node scripts/conformance-adapter.mjs` as the adapter command. The adapter maps only the profile's public outcomes (`accept`, `expired`, `reject-request`, and `unsupported`); it does not expose local verifier diagnostics, implement a server, or constitute full protocol conformance.
 
 ## Evidence obtained
 
