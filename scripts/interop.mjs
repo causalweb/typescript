@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { execFileSync, spawn, spawnSync } from "node:child_process";
-import { createPublicKey, generateKeyPairSync, randomBytes } from "node:crypto";
+import { createPublicKey, generateKeyPairSync, randomBytes, verify } from "node:crypto";
 import { mkdtempSync, readFileSync, renameSync, rmSync, writeFileSync } from "node:fs";
 import { createServer } from "node:http";
 import { tmpdir } from "node:os";
@@ -125,6 +125,7 @@ if (persistentSourceChecked) {
       generateKeyPairSync("ec", { namedCurve: "prime256v1" });
     const privateJwk = persistentPrivateKey.export({ format: "jwk" });
     assert.equal(typeof privateJwk.d, "string");
+    const deliveryCredential = randomBytes(32).toString("base64url");
     const persistentEnvironment = {
       ...process.env,
       CAUSALWEB_DEMO_PRIVATE_KEY: privateJwk.d,
@@ -277,7 +278,75 @@ if (persistentSourceChecked) {
         ]),
       );
     };
+    const deliveryProofValid = (event, proof) => {
+      if (typeof proof !== "string") return false;
+      const [header, payload, signature, extra] = proof.split(".");
+      if (!header || !payload || !signature || extra !== undefined) return false;
+      try {
+        const protectedHeader = JSON.parse(Buffer.from(header, "base64url").toString("utf8"));
+        if (
+          protectedHeader?.alg !== "ES256" ||
+          protectedHeader?.kid !== first.kid ||
+          protectedHeader?.typ !== "causalweb-demo-delivery+jwt" ||
+          Buffer.from(payload, "base64url").toString("utf8") !== JSON.stringify(event)
+        )
+          return false;
+        return verify(
+          "sha256",
+          Buffer.from(`${header}.${payload}`),
+          { key: persistentPublicKey, dsaEncoding: "ieee-p1363" },
+          Buffer.from(signature, "base64url"),
+        );
+      } catch {
+        return false;
+      }
+    };
+    const deliverRustEvent = async (event, credential = deliveryCredential) => {
+      const { deliveryProof, ...sourceEvent } = event;
+      const response = await fetch(`${projectionOrigin}/deliver`, {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+          ...(credential === null ? {} : { authorization: `Bearer ${credential}` }),
+        },
+        body: JSON.stringify({ event: sourceEvent, proof: deliveryProof }),
+      });
+      return response.status;
+    };
     const projection = createServer((request, response) => {
+      if (request.method === "POST" && request.url === "/deliver") {
+        void (async () => {
+          if (request.headers.authorization !== `Bearer ${deliveryCredential}`) {
+            response.writeHead(401).end();
+            return;
+          }
+          let body = "";
+          for await (const chunk of request) {
+            body += chunk;
+            if (body.length > 16_384) {
+              response.writeHead(413).end();
+              return;
+            }
+          }
+          try {
+            const delivery = JSON.parse(body);
+            if (!deliveryProofValid(delivery?.event, delivery?.proof))
+              throw new Error("invalid proof");
+            const applied = persistentVerifier.verify(delivery.event.evidence, first.subject, 100n);
+            const state = JSON.parse(readFileSync(projectionPath, "utf8"));
+            if (BigInt(applied.position) !== BigInt(state.frontier) + 1n)
+              throw new Error("delivery is not next in source order");
+            writeProjection({
+              frontier: applied.position,
+              orders: [...state.orders, delivery.event.order],
+            });
+            response.writeHead(204).end();
+          } catch {
+            response.writeHead(400).end();
+          }
+        })();
+        return;
+      }
       const headers = new Headers();
       for (let index = 0; index < request.rawHeaders.length; index += 2)
         headers.append(request.rawHeaders[index], request.rawHeaders[index + 1]);
@@ -313,15 +382,15 @@ if (persistentSourceChecked) {
       assert.ok(token);
       const event = await operation.json();
       assert.equal(event.position, 1);
+      assert.equal(await deliverRustEvent(event, null), 401);
       const stale = await fetchObservation(`${projectionOrigin}/orders`, [token], {
         authenticated: () => true,
       });
       assert.equal(stale.kind, "causal-failure");
       if (stale.kind === "causal-failure")
         assert.equal(stale.problem.outcomes[0].outcome, "unsatisfied");
-      const applied = persistentVerifier.verify(token, first.subject, 100n);
-      assert.equal(applied.position, "1");
-      writeProjection({ frontier: applied.position, orders: ["http-first"] });
+      assert.equal(await deliverRustEvent({ ...event, order: "altered" }), 400);
+      assert.equal(await deliverRustEvent(event), 204);
       const confirmed = await fetchObservation(`${projectionOrigin}/orders`, [token], {
         authenticated: () => true,
       });
