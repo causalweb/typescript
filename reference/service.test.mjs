@@ -88,6 +88,21 @@ async function exchange(port, certificate, path, method = "GET", headers = {}, b
   });
 }
 
+function deliveryBody(event, key) {
+  const header = Buffer.from(
+    JSON.stringify({ alg: "ES256", kid: "key-1", typ: "causalweb-reference-delivery+jwt" }),
+  ).toString("base64url");
+  const payload = Buffer.from(JSON.stringify(event)).toString("base64url");
+  const input = `${header}.${payload}`;
+  return JSON.stringify({
+    event,
+    proof: `${input}.${sign("sha256", Buffer.from(input), {
+      key,
+      dsaEncoding: "ieee-p1363",
+    }).toString("base64url")}`,
+  });
+}
+
 test("live HTTPS view reports only operator-recorded terminal failure", async (context) => {
   const directory = await mkdtemp(join(tmpdir(), "causalweb-reference-failed-http-"));
   assert.equal(resolve(directory, ".."), resolve(tmpdir()));
@@ -152,15 +167,22 @@ test("live HTTPS view reports only operator-recorded terminal failure", async (c
   };
   const first = event(1);
   const second = event(2);
-  const pending = new OrderViewStore(settings.CW_DATABASE, identity);
-  pending.accept(second);
-  pending.close();
   let view = start(settings, port);
   context.onTestFinished(async () => {
     await stop(view);
     await rm(directory, { recursive: true });
   });
   await view.ready;
+  const deliver = (item) =>
+    exchange(
+      port,
+      certificate,
+      "/deliver",
+      "POST",
+      { authorization: `Bearer ${settings.CW_DELIVERY_TOKEN}` },
+      deliveryBody(item, privateKey),
+    );
+  assert.equal((await deliver(second)).status, 204);
   const read = (item, authenticated = true) =>
     exchange(port, certificate, "/orders", "GET", {
       ...Object.fromEntries(requestHeaders([item.evidence])),
@@ -183,9 +205,7 @@ test("live HTTPS view reports only operator-recorded terminal failure", async (c
   recordFailureDecision("resolve-failed", "2", settings);
   assert.equal((await read(second)).status, 412);
   recordFailureDecision("mark-failed", "2", settings);
-  const applied = new OrderViewStore(settings.CW_DATABASE, identity);
-  applied.accept(first);
-  applied.close();
+  assert.equal((await deliver(first)).status, 204);
   const satisfied = await read(second);
   assert.equal(satisfied.status, 200);
   assert.equal(satisfied.headers["causal-result"], "satisfied");
@@ -642,20 +662,7 @@ test("configured HTTPS services recover delivery and confirm only the committed 
     ...event,
     evidence: `${evidence.split(".").slice(0, 2).join(".")}.${signatureBytes.toString("base64url")}`,
   };
-  const deliveryHeader = Buffer.from(
-    JSON.stringify({ alg: "ES256", kid: "key-1", typ: "causalweb-reference-delivery+jwt" }),
-  ).toString("base64url");
-  const signedDelivery = (signedEvent) => {
-    const payload = Buffer.from(JSON.stringify(signedEvent)).toString("base64url");
-    const input = `${deliveryHeader}.${payload}`;
-    return JSON.stringify({
-      event: signedEvent,
-      proof: `${input}.${sign("sha256", Buffer.from(input), {
-        key: privateKey,
-        dsaEncoding: "ieee-p1363",
-      }).toString("base64url")}`,
-    });
-  };
+  const signedDelivery = (signedEvent) => deliveryBody(signedEvent, privateKey);
   const expiredDelivery = await exchange(
     viewPort,
     certificate,
