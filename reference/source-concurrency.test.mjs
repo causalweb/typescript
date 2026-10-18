@@ -7,7 +7,7 @@ import { join, resolve } from "node:path";
 import { DatabaseSync } from "node:sqlite";
 import { fileURLToPath } from "node:url";
 import { test } from "vitest";
-import { OrderSourceStore } from "./order-store.mjs";
+import { OrderSourceStore, OrderViewStore } from "./order-store.mjs";
 
 const identity = {
   issuer: "https://orders.example",
@@ -82,4 +82,47 @@ test("two source processes serialize keyed writes behind a transient SQLite writ
     ["1", "2"],
   );
   source.close();
+}, 10000);
+
+test("view startup waits for a transient SQLite writer lock", async (context) => {
+  const directory = await mkdtemp(join(tmpdir(), "causalweb-view-startup-"));
+  assert.equal(resolve(directory, ".."), resolve(tmpdir()));
+  const path = join(directory, "view.sqlite");
+  const initialized = new OrderViewStore(path, identity);
+  initialized.close();
+  const lock = new DatabaseSync(path);
+  let lockHeld = false;
+  let child;
+  context.onTestFinished(async () => {
+    if (child && child.exitCode === null && child.signalCode === null) {
+      child.kill();
+      await once(child, "exit");
+    }
+    lock.close();
+    await rm(directory, { recursive: true });
+  });
+  try {
+    lock.exec("BEGIN IMMEDIATE");
+    lockHeld = true;
+    child = fork(
+      fileURLToPath(new URL("./view-open-fixture.mjs", import.meta.url)),
+      [path, JSON.stringify(identity)],
+      {
+        stdio: ["ignore", "pipe", "pipe", "ipc"],
+      },
+    );
+    const [starting] = await once(child, "message");
+    assert.equal(starting.kind, "starting");
+    const result = once(child, "message").then(([message]) => message);
+    child.send({ kind: "open" });
+    await new Promise((resolveWait) => setTimeout(resolveWait, 100));
+    lock.exec("COMMIT");
+    lockHeld = false;
+    assert.deepEqual(await result, {
+      kind: "opened",
+      snapshot: { frontier: null, orders: [] },
+    });
+  } finally {
+    if (lockHeld) lock.exec("ROLLBACK");
+  }
 }, 10000);

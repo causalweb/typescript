@@ -350,7 +350,7 @@ export class OrderViewStore {
 
   constructor(path, identity, faultPoint = () => {}) {
     this.#faultPoint = faultPoint;
-    this.#database = new DatabaseSync(path);
+    this.#database = new DatabaseSync(path, { timeout: 2000 });
     try {
       this.#database.exec(`
       PRAGMA journal_mode = WAL;
