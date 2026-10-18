@@ -205,7 +205,7 @@ const verifier =
     : null;
 const store =
   config.role === "source"
-    ? new OrderSourceStore(config.database, identity)
+    ? new OrderSourceStore(config.database, identity, testFaultPoint)
     : new OrderViewStore(config.database, identity, testFaultPoint, config.viewContract);
 
 function materialize(event) {
