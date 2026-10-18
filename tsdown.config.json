@@ -1,5 +1,5 @@
 {
-  "entry": ["src/*.ts"],
+  "entry": ["src/**/*.ts"],
   "root": "src",
   "outDir": "dist/src",
   "format": "esm",

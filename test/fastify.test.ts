@@ -2,7 +2,6 @@ import assert from "node:assert/strict";
 import { generateKeyPairSync } from "node:crypto";
 import fastify from "fastify";
 import { test } from "vitest";
-import { handleFastifyObservation } from "../src/fastify.js";
 import {
   fetchObservation,
   Issuer,
@@ -11,6 +10,7 @@ import {
   sourceKey,
   Verifier,
 } from "../src/index.js";
+import { handleFastifyObservation } from "../src/server/fastify.js";
 
 test("the Fastify adapter keeps ordinary routing and handles constrained observations", async (t) => {
   const { privateKey, publicKey } = generateKeyPairSync("ec", { namedCurve: "prime256v1" });

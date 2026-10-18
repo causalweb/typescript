@@ -10,8 +10,8 @@ import {
   sourceKey,
   Verifier,
   waitForObservation,
-} from "@causalweb/protocol";
-import { fetchObservation } from "@causalweb/protocol/client";
+} from "@causalweb/sdk";
+import { fetchObservation } from "@causalweb/sdk/client";
 
 const issuerName = "https://source.example";
 const domain = `${issuerName}/orders`;

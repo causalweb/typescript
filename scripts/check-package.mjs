@@ -46,20 +46,17 @@ try {
   const requiredFiles = [
     "dist/src/index.js",
     "dist/src/index.d.ts",
-    "dist/src/client.js",
-    "dist/src/client.d.ts",
-    "dist/src/node-http.js",
-    "dist/src/node-http.d.ts",
-    "dist/src/fastify.js",
-    "dist/src/fastify.d.ts",
-    "CROSS_RUNTIME_DEMO.md",
+    "dist/src/client/index.js",
+    "dist/src/client/index.d.ts",
+    "dist/src/server/node.js",
+    "dist/src/server/node.d.ts",
+    "dist/src/server/fastify.js",
+    "dist/src/server/fastify.d.ts",
     "MIGRATION.md",
     "PILOT.md",
-    "PERSISTENT_DEMO.md",
     "RELEASING.md",
     "RUST_REVISION",
     "CONFORMANCE_REVISION",
-    "security/npm-audit-2026-10-18.json",
     "CHANGELOG.md",
     "LICENSE.md",
   ];
@@ -132,8 +129,8 @@ try {
     stdio: "inherit",
   });
   const installedClient = join(consumer, "order-client.mjs");
-  copyFileSync(join(root, "reference", "client.mjs"), installedClient);
-  execFileSync(process.execPath, [join(root, "reference", "quickstart.mjs")], {
+  copyFileSync(join(root, "examples", "orders", "bin", "client.mjs"), installedClient);
+  execFileSync(process.execPath, [join(root, "examples", "orders", "bin", "quickstart.mjs")], {
     cwd: root,
     env: { ...environment, CAUSALWEB_QUICKSTART_CLIENT_SCRIPT: installedClient },
     stdio: "inherit",

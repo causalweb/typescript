@@ -12,7 +12,7 @@ import {
   sourceKey,
   Verifier,
   waitForObservation,
-} from "@causalweb/protocol";
+} from "@causalweb/sdk";
 
 // Synthetic SDK exercise. This does not establish source durability or recovery.
 const source = "https://source.example",

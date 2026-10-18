@@ -1,4 +1,4 @@
-import { handleFastifyObservation } from "@causalweb/protocol/fastify";
+import { handleFastifyObservation } from "@causalweb/sdk/fastify";
 import fastify from "fastify";
 
 const app = fastify();
