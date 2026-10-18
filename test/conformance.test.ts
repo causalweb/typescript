@@ -423,6 +423,26 @@ test("canonical encodings, nested duplicates, and exact NumericDates", () => {
   );
 });
 
+test("signed unknown JSON values preserve numeric syntax and reject lone surrogates", () => {
+  const keys = pair();
+  const consumer = verifier(keys.publicKey);
+  const base = JSON.stringify(claims());
+  const withExtension = (extra: string) =>
+    rawSign(keys.privateKey, `${base.slice(0, -1)},"extension":${extra}}`);
+
+  assert.doesNotThrow(() =>
+    consumer.verify(withExtension('{"number":1e400,"name":"\\uD83D\\uDE00"}'), SUBJECT, 100n),
+  );
+  for (const extra of [
+    '{"value":"\\uD800"}',
+    '{"\\uDC00":true}',
+    '{"nested":[{"value":"\\uD800"}]}',
+    '{"number":NaN}',
+  ]) {
+    assert.throws(() => consumer.verify(withExtension(extra), SUBJECT, 100n), ProtocolError);
+  }
+});
+
 test("unauthorized and invalid evidence never selects state", async () => {
   const keys = pair(),
     consumer = verifier(keys.publicKey);
