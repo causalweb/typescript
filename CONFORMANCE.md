@@ -2,6 +2,8 @@
 
 Status: Experimental source preview; no full deployment conformance claim
 
+The [Linux and Windows checks on source commit `954fc45c395a2a884bb4ca8926212fd63ede9dbf`](https://github.com/causalweb/typescript/actions/runs/39115673867) passed all six selected pinned runner profiles, the package consumer, demo, release checks, and the historical peer job. These are commit-bound checks, not a class certification or interoperability evidence for the proposed URI rule.
+
 The order-source/view reference has a separate class-specific evidence matrix at `reference/CLASS_REPORT.md` in the source checkout. It records which SDK runner profiles pass locally and why the reference application does not yet claim any deployment conformance class.
 
 The normative input is draft `0.1.1-experimental`, with exact source, peer, and runner pins in [SPEC_REVISION](SPEC_REVISION), [RUST_REVISION](RUST_REVISION), and [CONFORMANCE_REVISION](CONFORMANCE_REVISION). Shared vector revision: `0.1.4`.

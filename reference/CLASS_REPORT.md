@@ -1,19 +1,19 @@
 # Order reference conformance evidence matrix
 
-Status: local, uncommitted engineering report; **no deployment conformance class is claimed**. This report evaluates the [order reference](README.md) against [specification §8](https://github.com/causalweb/spec/blob/9ba475c17afa48ab02c50ed48991ea435eff10a0/spec/07-conformance.md). It separates the TypeScript SDK's selected conformance profiles from the reference application's storage, authorization, and recovery obligations. A passing SDK adapter cannot certify the application that calls it.
+Status: source-preview engineering report; **no deployment conformance class is claimed**. This report evaluates the [order reference](README.md) against [specification §8](https://github.com/causalweb/spec/blob/9ba475c17afa48ab02c50ed48991ea435eff10a0/spec/07-conformance.md). It separates the TypeScript SDK's selected conformance profiles from the reference application's storage, authorization, and recovery obligations. A passing SDK adapter cannot certify the application that calls it.
 
 ## Identity and policy
 
-- SDK package: `@causalweb/protocol` `0.1.0-experimental`; source HEAD `90abb337fb40e92ac1cb901e4fb2c3390844f05b` with **uncommitted changes**, so HEAD is not an immutable digest of this tested implementation.
+- SDK package: `@causalweb/protocol` `0.1.0-experimental`; [committed source preview](https://github.com/causalweb/typescript/commit/954fc45c395a2a884bb4ca8926212fd63ede9dbf) `954fc45c395a2a884bb4ca8926212fd63ede9dbf`, not a published release.
 - Normative draft: `0.1.1-experimental`, spec commit `9ba475c17afa48ab02c50ed48991ea435eff10a0`; vectors `0.1.4`; runner commit `d549b5fcaffc8c267e57de019b3d5fc521589873`.
-- Local runner date: 2026-10-18. Environment: Windows 10.0.26200, Node.js v24.18.0, x64. The exact six machine-readable runner outputs are preserved in [the local report](conformance-runner-local.json), marked dirty-worktree rather than attested release evidence.
+- Local runner date: 2026-10-18. Environment: Windows 10.0.26200, Node.js v24.18.0, x64. The exact six machine-readable runner outputs are preserved in [the local report](conformance-runner-local.json), whose `local-uncommitted-source-preview` status describes the original run. The same six profiles subsequently passed in [Linux and Windows CI on the committed preview](https://github.com/causalweb/typescript/actions/runs/39115673867). Neither record is a release attestation.
 - Evidence format: provisional `application/cw-evidence+jwt`; ES256 only. The reference accepts one configured issuer/domain/audience/subject and a bounded keyring. Exact configured issuer and domain authority is required; the view uses 30 seconds of clock skew and a 3,600-second maximum evidence lifetime. No network key discovery or per-token revocation exists.
 - SDK default input limits: 16 requirements, 16,384 combined requirement-field bytes, 8,192 bytes per token, 8,192 decoded bytes, and JSON depth 32. The reference's POST body limit is 16,384 bytes. HTTP header and request timeouts are ten seconds, outbound delivery timeout five seconds, and the example client overall deadline fifteen seconds. The observer deliberately waits zero seconds for causal progress.
 - Fault assumptions and backup/repair rules: [fault model](FAULT_MODEL.md). Projection rows and frontier commit together in one SQLite transaction; read state and lineage share a transaction. This is a single-host, single-process-per-role, WAL/`synchronous = FULL` model, not a power-loss or multi-host guarantee.
 
 ## Selected runner profiles
 
-The runner used a separate detached spec worktree at the exact pin, without changing the working spec checkout. All six local invocations exited zero:
+The original local runner used a separate detached spec worktree at the exact pin, without changing the working spec checkout. All six local invocations exited zero; the CI run above repeated the same pinned profiles on source commit `954fc45c395a2a884bb4ca8926212fd63ede9dbf`:
 
 | SDK adapter profile | Result | Cases | What this does not establish |
 | --- | --- | ---: | --- |
@@ -24,7 +24,7 @@ The runner used a separate detached spec worktree at the exact pin, without chan
 | `http-observer-v1` | pass | 15 | Network server, authorization integration, cancellation, or real transactional snapshots |
 | `http-transport-server-v1` | pass | 7 | TLS, HTTP/2+, proxies, or a durable deployed service |
 
-Reproduce with `npm run build` in `typescript/` and a detached checkout of the spec commit above. From `typescript/`, run `node ../conformance/runner.mjs --spec <PINNED_SPEC_WORKTREE> --profile <PROFILE> -- node scripts/conformance-adapter.mjs` for the first five profiles. For `http-transport-server-v1`, use `node scripts/transport-conformance-server.mjs` after `--`. The runner itself was at the commit above. The JSON artifact records every returned case, not just pass counts. It does **not** attest that the current dirty tree can be reconstructed from HEAD.
+Reproduce with `npm run build` in `typescript/` and a detached checkout of the spec commit above. From `typescript/`, run `node ../conformance/runner.mjs --spec <PINNED_SPEC_WORKTREE> --profile <PROFILE> -- node scripts/conformance-adapter.mjs` for the first five profiles. For `http-transport-server-v1`, use `node scripts/transport-conformance-server.mjs` after `--`. The runner itself was at the commit above. The local JSON artifact records every returned case, not just pass counts; the linked CI run is the reproducible commit-bound evidence.
 
 ## Reference application classes
 
@@ -47,4 +47,4 @@ No class above is promoted by the 85 selected passing runner cases. The [general
 - **Known limitations:** no terminal `failed` outcome in the order application, no irrelevant classification, no multiple source domains, no online schema migration, no power-loss or fsync campaign, no externally operated restore, and no sustained concurrent load. The single-host [resource samples](MEASUREMENTS.md) are not capacity limits.
 - **External gates:** no independent review, external developer walkthrough, external pilot, release attestation, or registry package is recorded here. The package remains private and experimental.
 
-Next report revision needs an immutable source revision, complete class-specific mandatory-case coverage, operator-configured TLS and restore evidence, and a maintainer attestation. Until then this is an evidence map, not a certificate.
+The next class assessment needs complete mandatory-case coverage, operator-run TLS and restore evidence, and a maintainer attestation. Until then this is an evidence map, not a certificate.
