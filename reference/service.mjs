@@ -1,11 +1,4 @@
-import {
-  createPrivateKey,
-  createPublicKey,
-  randomUUID,
-  sign,
-  timingSafeEqual,
-  verify,
-} from "node:crypto";
+import { createPrivateKey, createPublicKey, timingSafeEqual } from "node:crypto";
 import { readFileSync } from "node:fs";
 import { createServer } from "node:https";
 import { dirname, resolve } from "node:path";
@@ -21,10 +14,11 @@ import {
   sourceKey,
   Verifier,
 } from "@causalweb/protocol";
+import { sendDelivery, validDeliveryProof } from "./delivery.mjs";
 import { ORDER_CONTRACT, ORDER_SCHEMA, OrderSourceStore, OrderViewStore } from "./order-store.mjs";
+import { materializeEvent } from "./source-evidence.mjs";
 
 const MAX_BODY_BYTES = 16_384;
-const DELIVERY_TYPE = "causalweb-reference-delivery+jwt";
 
 function setting(name) {
   const value = process.env[name];
@@ -69,6 +63,17 @@ function protectedConfig() {
   const domain = setting("CW_DOMAIN");
   const audience = setting("CW_AUDIENCE");
   const subject = setting("CW_SUBJECT");
+  const viewContract = {
+    contract: process.env.CW_VIEW_CONTRACT ?? ORDER_CONTRACT,
+    schema: process.env.CW_VIEW_SCHEMA ?? ORDER_SCHEMA,
+  };
+  if (
+    role === "view" &&
+    (!viewContract.contract ||
+      !viewContract.schema ||
+      (process.env.CW_VIEW_CONTRACT === undefined) !== (process.env.CW_VIEW_SCHEMA === undefined))
+  )
+    throw new Error("CW_VIEW_CONTRACT and CW_VIEW_SCHEMA must be configured together");
   const kid = setting("CW_KID");
   const appToken = setting("CW_APP_TOKEN");
   const deliveryToken = setting("CW_DELIVERY_TOKEN");
@@ -105,6 +110,7 @@ function protectedConfig() {
     domain,
     audience,
     subject,
+    viewContract,
     kid,
     appToken,
     deliveryToken,
@@ -170,41 +176,6 @@ function validEvent(value) {
   return value;
 }
 
-function deliveryProof(event, kid, key) {
-  const header = Buffer.from(JSON.stringify({ alg: "ES256", kid, typ: DELIVERY_TYPE })).toString(
-    "base64url",
-  );
-  const payload = Buffer.from(JSON.stringify(event)).toString("base64url");
-  const message = `${header}.${payload}`;
-  const signature = sign("sha256", Buffer.from(message), { key, dsaEncoding: "ieee-p1363" });
-  return `${message}.${signature.toString("base64url")}`;
-}
-
-function validDeliveryProof(event, proof, kid, key) {
-  if (typeof proof !== "string") return false;
-  const parts = proof.split(".");
-  if (parts.length !== 3 || parts.some((part) => !/^[A-Za-z0-9_-]+$/.test(part))) return false;
-  const [header, payload, signature] = parts;
-  try {
-    const protectedHeader = JSON.parse(Buffer.from(header, "base64url").toString("utf8"));
-    if (
-      protectedHeader.alg !== "ES256" ||
-      protectedHeader.kid !== kid ||
-      protectedHeader.typ !== DELIVERY_TYPE ||
-      payload !== Buffer.from(JSON.stringify(event)).toString("base64url")
-    )
-      return false;
-    return verify(
-      "sha256",
-      Buffer.from(`${header}.${payload}`),
-      { key, dsaEncoding: "ieee-p1363" },
-      Buffer.from(signature, "base64url"),
-    );
-  } catch {
-    return false;
-  }
-}
-
 const config = protectedConfig();
 function testFaultPoint(point) {
   if (process.env.NODE_ENV === "test" && process.env.CW_TEST_FAULT_POINT === point)
@@ -234,31 +205,21 @@ const verifier =
     : null;
 const store =
   config.role === "source"
-    ? new OrderSourceStore(config.database, identity)
-    : new OrderViewStore(config.database, identity, testFaultPoint);
+    ? new OrderSourceStore(config.database, identity, testFaultPoint)
+    : new OrderViewStore(config.database, identity, testFaultPoint, config.viewContract);
 
 function materialize(event) {
   if (!issuer) throw new Error("source issuer is unavailable");
   const now = BigInt(Math.floor(Date.now() / 1000));
-  const expired = BigInt(event.expiresAt) <= now;
-  if (event.evidence !== null && !expired) throw new Error("evidence is not expired");
-  const issuedAt = expired ? now : BigInt(event.issuedAt);
-  const expiresAt = expired ? now + 3600n : BigInt(event.expiresAt);
-  const evidence = issuer.issueCommitted(
-    {
-      subject: config.subject,
-      audiences: [config.audience],
-      domain: config.domain,
-      position: BigInt(event.position),
-      issuedAt,
-      expiresAt,
-      evidenceId: event.evidence === null ? event.id : `urn:uuid:${randomUUID()}`,
-    },
+  return materializeEvent(
+    store,
+    event,
+    issuer,
+    config.subject,
+    config.audience,
+    config.domain,
     now,
   );
-  if (event.evidence === null) store.materialize(event.id, evidence, issuedAt, expiresAt);
-  else store.refresh(event.id, event.evidence, evidence, issuedAt, expiresAt, now);
-  return { ...event, issuedAt: issuedAt.toString(), expiresAt: expiresAt.toString(), evidence };
 }
 
 function recover() {
@@ -283,21 +244,16 @@ function deliverPending() {
         if (shuttingDown) break;
         if (BigInt(event.expiresAt) <= BigInt(Math.floor(Date.now() / 1000)))
           event = materialize(event);
-        const proof = deliveryProof(event, config.kid, config.key);
-        const destination = new URL("/deliver", config.viewUrl);
-        const result = await fetch(destination, {
-          method: "POST",
-          redirect: "manual",
-          signal: AbortSignal.any([deliveryAbort.signal, AbortSignal.timeout(5000)]),
-          headers: {
-            authorization: `Bearer ${config.deliveryToken}`,
-            "content-type": "application/json",
-          },
-          body: JSON.stringify({ event, proof }),
-        });
-        await result.body?.cancel();
-        if (result.status !== 204) {
-          reportDeliveryFailure(`HTTP ${result.status}`);
+        const status = await sendDelivery(
+          event,
+          config.viewUrl,
+          config.deliveryToken,
+          config.kid,
+          config.key,
+          deliveryAbort.signal,
+        );
+        if (status !== 204) {
+          reportDeliveryFailure(`HTTP ${status}`);
           break;
         }
         store.delivered(event.id, event.evidence);
@@ -321,8 +277,8 @@ function snapshot() {
       headers: new Headers({ "content-type": "application/json" }),
       body: Buffer.from(JSON.stringify({ orders: state.orders })),
     },
-    ORDER_CONTRACT,
-    ORDER_SCHEMA,
+    config.viewContract.contract,
+    config.viewContract.schema,
     new Map([
       [
         sourceKey(config.issuer, config.domain),

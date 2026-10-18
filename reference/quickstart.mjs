@@ -169,7 +169,7 @@ try {
     execFileSync(
       process.execPath,
       [
-        "reference/client.mjs",
+        process.env.CAUSALWEB_QUICKSTART_CLIENT_SCRIPT ?? "reference/client.mjs",
         `https://127.0.0.1:${sourcePort}`,
         `https://127.0.0.1:${viewPort}`,
         "from-client",

@@ -4,23 +4,29 @@ An independent experimental Causal Web implementation for Node.js 24 and newer. 
 
 The [specification](https://github.com/causalweb/spec) remains authoritative. This source preview follows draft `0.1.1-experimental` and vector revision `0.1.4`, with the exact commit in [SPEC_REVISION](SPEC_REVISION). There is no npm release yet; the package is deliberately private. The package name in `package.json` does not claim registry availability or ownership.
 
-## Run it
+## Try the local demo
 
 ```sh
 git clone https://github.com/causalweb/typescript.git
 cd typescript
 npm ci --ignore-scripts
+npm run demo
+```
+
+The demo starts separate HTTPS source and view processes with temporary SQLite databases. It shows a stale constrained read, recovers authenticated delivery, and confirms the read through the SDK client. It uses a test-only localhost certificate and disposable keys and credentials, then removes its temporary data. It is not a deployment recipe; the npm tarball contains the SDK but not this reference service. In the source checkout, read `reference/README.md` for persistent storage and operator-supplied certificates.
+
+## Verify the source and package
+
+```sh
 npm test
 npm run test:package
 ```
 
-The package check builds a real `.tgz`, installs it with its runtime dependency into a temporary application outside this repository, compiles strict Node and portable-client consumers, and runs the consumers in the source checkout's `test/consumer/`. Negative type tests check that callers cannot substitute a JavaScript `number` for a position or an unauthenticated object/string for verified evidence. This is package-consumption evidence, not a registry release or storage-durability test.
+The package check builds a real `.tgz`, installs it with its runtime dependency into a temporary application outside this repository, compiles strict Node and portable-client consumers, and runs the consumers in the source checkout's `test/consumer/`. It also runs the small [source-checkout order client](https://github.com/causalweb/typescript/blob/preview/typescript-product-milestone/reference/client.mjs) from that temporary application against the reference's two SQLite/HTTPS processes. The quickstart first observes one committed order as stale before delivery resumes; the copied client then writes another order and confirms it through the installed SDK client. Negative type tests check that callers cannot substitute a JavaScript `number` for a position or an unauthenticated object/string for verified evidence. This is package-consumption and local process evidence, not a registry release, external developer result, or power-loss durability test.
 
 The SDK's published JavaScript is built with tsdown in unbundle mode so its existing ESM entry points and relative modules remain intact. TypeScript still checks the source, emits declarations, and compiles decorator-based integration tests; the package check exercises the resulting tarball.
 
 The tests exercise all shared fixtures, strict trust/encoding checks, and real loopback HTTP. They include a [persistent local-service experiment](PERSISTENT_DEMO.md): a source HTTP service writes an outbox before returning evidence, a projection service writes representation bytes and frontier in one document, and constrained reads move from `unsatisfied` to confirmed after propagation. It covers delayed, out-of-order, duplicate, forged, interrupted, and recovered events. A separate [SQLite experiment](SQLITE_DEMO.md) runs source and observer processes with independent transactional databases, including recovery after source or observer interruption. A POSIX-only [cross-runtime experiment](CROSS_RUNTIME_DEMO.md) runs a TypeScript source process and a Rust observer process over loopback HTTP. None is a production adapter or full deployment conformance.
-
-For a one-command local order-source/view walkthrough from the source checkout, run `npm run demo` after `npm ci --ignore-scripts`. It starts two HTTPS processes with separate temporary SQLite databases, shows a stale constrained read, recovers authenticated delivery, and confirms through the SDK client. It uses the repository's **test-only localhost certificate**, generates disposable credentials and signing keys, then stops the services and removes their temporary data. The npm tarball contains the SDK, not this reference service or its demo script. It is not a deployment recipe; see `reference/README.md` in the source checkout for real certificates and persistent storage.
 
 To check fixture provenance against an available `spec` checkout:
 
@@ -39,10 +45,10 @@ That development-only command checks both protocol engines against each other's 
 
 ## Integrate an observation
 
-After obtaining evidence from an operation that actually committed, a Node.js application can use the built package directly from this checkout:
+After installing the preview archive, a Node.js application can pass evidence from an operation that actually committed to the public client entry:
 
 ```ts
-import { fetchObservation } from "./dist/src/index.js";
+import { fetchObservation } from "@causalweb/protocol/client";
 
 const result = await fetchObservation(viewUrl, evidenceFromCommittedOperations, {
   request: { headers: { Authorization: authorizationHeader } },

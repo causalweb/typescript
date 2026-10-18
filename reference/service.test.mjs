@@ -122,6 +122,8 @@ test("live HTTPS view reports only operator-recorded terminal failure", async (c
     CW_DOMAIN: "https://orders.example/domains/orders",
     CW_AUDIENCE: "https://view.example/causal",
     CW_SUBJECT: "tenant-a",
+    CW_VIEW_CONTRACT: "reference-orders/test-live-contract",
+    CW_VIEW_SCHEMA: "orders/test-live-contract",
     CW_KID: "key-1",
     CW_APP_TOKEN: "application-secret-for-tenant-a",
     CW_DELIVERY_TOKEN: "separate-delivery-secret",
@@ -188,8 +190,37 @@ test("live HTTPS view reports only operator-recorded terminal failure", async (c
       ...Object.fromEntries(requestHeaders([item.evidence])),
       ...(authenticated ? { authorization: `Bearer ${settings.CW_APP_TOKEN}` } : {}),
     });
+  const auditCount = () => {
+    const database = new DatabaseSync(settings.CW_DATABASE, { readOnly: true });
+    try {
+      return database.prepare("SELECT COUNT(*) AS count FROM view_failure_events").get().count;
+    } finally {
+      database.close();
+    }
+  };
+  const operatorRouteAttempt = (action, token) =>
+    exchange(port, certificate, `/operator/${action}/2`, "POST", {
+      authorization: `Bearer ${token}`,
+    });
+  assert.equal((await read(second)).status, 412);
+  for (const token of [settings.CW_APP_TOKEN, settings.CW_DELIVERY_TOKEN]) {
+    const attempt = await operatorRouteAttempt("mark-failed", token);
+    assert.equal(attempt.status, 404);
+    assert.equal(attempt.headers["causal-result"], undefined);
+  }
+  const sourceClaim = await deliver({ ...second, sourceReportedFailure: true });
+  assert.equal(sourceClaim.status, 400);
+  assert.equal(sourceClaim.headers["causal-result"], undefined);
+  assert.equal(auditCount(), 0);
   assert.equal((await read(second)).status, 412);
   recordFailureDecision("mark-failed", "2", settings);
+  assert.equal(auditCount(), 1);
+  for (const token of [settings.CW_APP_TOKEN, settings.CW_DELIVERY_TOKEN]) {
+    const attempt = await operatorRouteAttempt("resolve-failed", token);
+    assert.equal(attempt.status, 404);
+    assert.equal(attempt.headers["causal-result"], undefined);
+  }
+  assert.equal(auditCount(), 1);
   const failed = await read(second);
   assert.equal(failed.status, 503);
   assert.equal(failed.headers["causal-result"], "unsatisfied");
@@ -258,7 +289,10 @@ test("invalid protocol identity does not bind an empty database", async (context
         CW_DATABASE: join(directory, "view.sqlite"),
         CW_VERIFY_KEYRING_FILE: keyring,
       },
-      invalid: [{ CW_DOMAIN: `${common.CW_DOMAIN}#fragment` }],
+      invalid: [
+        { CW_DOMAIN: `${common.CW_DOMAIN}#fragment` },
+        { CW_VIEW_CONTRACT: "reference-orders/test-unpaired" },
+      ],
       port: viewPort,
     },
   ];
@@ -334,7 +368,7 @@ test("reference services recover across source and projection commit crash bound
     "cw-request-key": "first",
   };
   let source = start(
-    { ...sourceEnvironment, CW_TEST_FAULT_POINT: "after-source-commit" },
+    { ...sourceEnvironment, CW_TEST_FAULT_POINT: "before-source-commit" },
     sourcePort,
   );
   let view;
@@ -344,6 +378,38 @@ test("reference services recover across source and projection commit crash bound
     assert.ok(directory.startsWith(join(resolve(tmpdir()), "causalweb-reference-crash-")));
     await rm(directory, { recursive: true });
   });
+  await source.ready;
+  await assert.rejects(
+    exchange(
+      sourcePort,
+      certificate,
+      "/orders",
+      "POST",
+      orderHeaders,
+      JSON.stringify({ order: "first" }),
+    ),
+  );
+  await waitForCrash(source);
+  const uncommitted = new OrderSourceStore(sourceEnvironment.CW_DATABASE, identity);
+  assert.deepEqual(uncommitted.unissued(), []);
+  uncommitted.close();
+  const rolledBackSource = new DatabaseSync(sourceEnvironment.CW_DATABASE, { readOnly: true });
+  assert.equal(
+    rolledBackSource.prepare("SELECT COUNT(*) AS count FROM source_orders").get().count,
+    0,
+  );
+  assert.equal(
+    rolledBackSource.prepare("SELECT next_position FROM source_state WHERE id = 1").get()
+      .next_position,
+    "1",
+  );
+  assert.equal(
+    rolledBackSource.prepare("SELECT COUNT(*) AS count FROM source_requests").get().count,
+    0,
+  );
+  rolledBackSource.close();
+
+  source = start({ ...sourceEnvironment, CW_TEST_FAULT_POINT: "after-source-commit" }, sourcePort);
   await source.ready;
   await assert.rejects(
     exchange(
@@ -1052,16 +1118,20 @@ test("configured HTTPS services recover delivery and confirm only the committed 
   });
   assert.ok(held.undelivered().some((event) => event.order === "rejected-delivery"));
   held.close();
-  source = start(
-    { ...sourceEnvironment, CW_KID: "key-2", CW_SIGNING_KEY_FILE: rotatedSigningKey },
-    sourcePort,
-  );
-  await source.ready;
   const [blockedEvidence] = parseContext([blocked.headers["causal-context"]]);
   const recoveredHeaders = {
     ...Object.fromEntries(requestHeaders([blockedEvidence])),
     authorization: `Bearer ${rotatedAppToken}`,
   };
+  const notTerminal = await exchange(viewPort, certificate, "/orders", "GET", recoveredHeaders);
+  assert.equal(notTerminal.status, 412);
+  assert.equal(notTerminal.headers["causal-result"], "unsatisfied");
+  assert.equal(JSON.parse(notTerminal.body).outcomes[0].outcome, "unsatisfied");
+  source = start(
+    { ...sourceEnvironment, CW_KID: "key-2", CW_SIGNING_KEY_FILE: rotatedSigningKey },
+    sourcePort,
+  );
+  await source.ready;
   let accepted;
   for (let attempt = 0; attempt < 30; attempt += 1) {
     accepted = await exchange(viewPort, certificate, "/orders", "GET", recoveredHeaders);

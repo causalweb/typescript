@@ -27,13 +27,19 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           repository: causalweb/spec
-          ref: 56d3de580bd46726372e544cdc3214cb99142647
+          ref: b5a216510708553f7ac763d02ec12755df78d7f1
           path: .spec-proposal
           persist-credentials: false
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
+          repository: causalweb/spec
+          ref: 501a5fd6e5289748c482e34711c8e90b42f60aff
+          path: .spec-terminal-proposal
+          persist-credentials: false
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
           repository: causalweb/conformance
-          ref: d549b5fcaffc8c267e57de019b3d5fc521589873
+          ref: e025a7e8728e1bfa3b5bc8490ee4fb130d6ff135
           path: .conformance
           persist-credentials: false
       - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
@@ -49,8 +55,11 @@ jobs:
       - run: node .conformance/runner.mjs --spec .spec --profile prefix-evaluation-v1 -- node scripts/conformance-adapter.mjs
       - run: node .conformance/runner.mjs --spec .spec --profile context-reduction-v1 -- node scripts/conformance-adapter.mjs
       - run: node .conformance/runner.mjs --spec .spec --profile http-client-confirmation-v1 -- node scripts/conformance-adapter.mjs
+      - run: node .conformance/runner.mjs --spec .spec --profile http-redirect-agent-v1 -- node scripts/conformance-adapter.mjs
       - run: node .conformance/runner.mjs --spec .spec --profile http-observer-v1 -- node scripts/conformance-adapter.mjs
       - run: node .conformance/runner.mjs --spec .spec --profile http-transport-server-v1 -- node scripts/transport-conformance-server.mjs
+      - run: node .conformance/runner.mjs --spec .spec-proposal --profile uri-identities-draft-v1 -- node scripts/conformance-adapter.mjs
+      - run: node .conformance/runner.mjs --spec .spec-terminal-proposal --profile terminal-failure-draft-v1 -- node scripts/terminal-failure-conformance-adapter.mjs
       - run: npm audit --audit-level=high
       - if: matrix.os == 'ubuntu-24.04'
         run: npm run test:package -- --preview-artifact

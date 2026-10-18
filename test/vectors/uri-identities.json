@@ -37,6 +37,13 @@
       "description": "An empty trailing fragment is still forbidden",
       "expected": "reject-request",
       "compact": "eyJhbGciOiJFUzI1NiIsImtpZCI6InVyaS10ZXN0LWtleSIsInR5cCI6ImN3LWV2aWRlbmNlK2p3dCJ9.eyJpc3MiOiJodHRwczovL2lzc3Vlci5leGFtcGxlIiwic3ViIjoib3BhcXVlLXRlbmFudCIsImF1ZCI6Imh0dHBzOi8vdmVyaWZpZXIuZXhhbXBsZS9jYXVzYWwiLCJpYXQiOjEsImV4cCI6MTAwMCwianRpIjoidXJuOnV1aWQ6MDAwMDAwMDAtMDAwMC00MDAwLTgwMDAtMDAwMDAwMDAwMDAzIiwiaHR0cHM6Ly9naXRodWIuY29tL2NhdXNhbHdlYi9zcGVjL2NsYWltcy92MSI6eyJ2IjoxLCJwcm9maWxlIjoiaHR0cHM6Ly9naXRodWIuY29tL2NhdXNhbHdlYi9zcGVjL3Byb2ZpbGVzL3ByZWZpeC0wMSMiLCJkb21haW4iOiJodHRwczovL2lzc3Vlci5leGFtcGxlL2RvbWFpbnMvYSIsInBvc2l0aW9uIjoiNSIsImNvbW1pdCI6InN0YWJsZSJ9fQ.HYoEK_Hm6u0phwjXMFBqdUZgzqTJBTNTAyRDJlXGCXrWsgeEI4vruuFZJVYMa-Murj8tq0Qp-39c_-dmA9h20g"
+    },
+    {
+      "id": "URI-004",
+      "description": "A signed lowercase issuer does not inherit authority from an uppercase configured issuer",
+      "expected": "reject-request",
+      "trusted_issuer": "HTTPS://issuer.example",
+      "compact": "eyJhbGciOiJFUzI1NiIsImtpZCI6InVyaS10ZXN0LWtleSIsInR5cCI6ImN3LWV2aWRlbmNlK2p3dCJ9.eyJpc3MiOiJodHRwczovL2lzc3Vlci5leGFtcGxlIiwic3ViIjoib3BhcXVlLXRlbmFudCIsImF1ZCI6Imh0dHBzOi8vdmVyaWZpZXIuZXhhbXBsZS9jYXVzYWwiLCJpYXQiOjEsImV4cCI6MTAwMCwianRpIjoidXJuOnV1aWQ6MDAwMDAwMDAtMDAwMC00MDAwLTgwMDAtMDAwMDAwMDAwMDAxIiwiaHR0cHM6Ly9naXRodWIuY29tL2NhdXNhbHdlYi9zcGVjL2NsYWltcy92MSI6eyJ2IjoxLCJwcm9maWxlIjoiaHR0cHM6Ly9naXRodWIuY29tL2NhdXNhbHdlYi9zcGVjL3Byb2ZpbGVzL3ByZWZpeC0wMSIsImRvbWFpbiI6Imh0dHBzOi8vaXNzdWVyLmV4YW1wbGUvZG9tYWlucy9hJTIzcGFydCIsInBvc2l0aW9uIjoiNSIsImNvbW1pdCI6InN0YWJsZSJ9fQ.KgGhdBiihbzmst_WqNKadFCXwKzFRHmJyWGZaQbefRcLLNbsVgryxYy9dNAUKnl8J1ZI-7Sq2KiI99oVvf632w"
     }
   ]
 }
