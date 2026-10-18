@@ -4,7 +4,7 @@ import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { DatabaseSync } from "node:sqlite";
-import { test } from "node:test";
+import { test } from "vitest";
 import {
   acceptConfirmation,
   Issuer,
@@ -288,7 +288,7 @@ test("SQLite source and projection preserve transactional causal cuts across res
   const { privateKey, publicKey } = generateKeyPairSync("ec", { namedCurve: "prime256v1" });
   let source = new SqliteSource(join(root, "source.db"), privateKey);
   let projection = new SqliteProjection(join(root, "projection.db"), publicKey);
-  context.after(async () => {
+  context.onTestFinished(async () => {
     source.close();
     projection.close();
     assert.equal(resolve(root, ".."), resolve(tmpdir()));

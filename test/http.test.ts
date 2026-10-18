@@ -1,7 +1,9 @@
 import assert from "node:assert/strict";
+import { spawn } from "node:child_process";
 import { generateKeyPairSync } from "node:crypto";
+import { once } from "node:events";
 import { createServer, type Server } from "node:http";
-import { test } from "node:test";
+import { test } from "vitest";
 import {
   fetchObservation,
   Issuer,
@@ -11,6 +13,7 @@ import {
   Snapshot,
   sourceKey,
   Verifier,
+  waitForObservation,
 } from "../src/index.js";
 
 const testAuthentication = { authenticated: () => true };
@@ -101,7 +104,7 @@ test("real loopback HTTP enforces dependencies and safely converts local adapter
         res.end();
       });
   });
-  t.after(() => {
+  t.onTestFinished(() => {
     server.closeAllConnections();
     server.close();
   });
@@ -125,7 +128,22 @@ test("real loopback HTTP enforces dependencies and safely converts local adapter
     assert.equal(stale.problem.status, 412);
     assert.equal(stale.problem.outcomes[0]?.outcome, "unsatisfied");
   }
-  frontier = 5n;
+  await assert.rejects(
+    waitForObservation(`${base}/view`, [token], {
+      authenticated: () => true,
+      signal: AbortSignal.timeout(20),
+    }),
+    { name: "TimeoutError" },
+  );
+  setTimeout(() => {
+    frontier = 5n;
+  }, 50);
+  const waited = await waitForObservation(`${base}/view`, [token], {
+    authenticated: () => true,
+    signal: AbortSignal.timeout(2000),
+  });
+  assert.equal(waited.kind, "confirmed");
+  await waited.response.body?.cancel();
   const fresh = await fetchObservation(`${base}/view`, [token], testAuthentication);
   assert.equal(fresh.kind, "confirmed");
   assert.deepEqual(await fresh.response.json(), { state: "indexed" });
@@ -147,26 +165,34 @@ test("real loopback HTTP enforces dependencies and safely converts local adapter
       stage === "authorization" ? "before-read" : stage === "read" ? "read" : "before-response",
     );
   }
+  const ordinary = await waitForObservation(`${base}/view`, [token], {
+    authenticated: () => true,
+    signal: AbortSignal.timeout(2000),
+  });
+  assert.equal(ordinary.kind, "ordinary-error");
+  await ordinary.response.body?.cancel();
 });
 
 test("a legacy 200 is rejected and a cross-origin redirect never forwards evidence", async (t) => {
   const requests: string[] = [];
+  const originRequirements: string[] = [];
   const destination = createServer((req, res) => {
     requests.push(req.headers["causal-require"]?.toString() ?? "");
     res.end("must not be reached");
   });
-  t.after(() => {
+  t.onTestFinished(() => {
     destination.closeAllConnections();
     destination.close();
   });
   const otherOrigin = await listen(destination);
   const server = createServer((req, res) => {
     if (req.url === "/redirect") {
+      originRequirements.push(req.headers["causal-require"]?.toString() ?? "");
       res.writeHead(302, { Location: `${otherOrigin}/view` });
       res.end();
     } else res.end("unaware origin");
   });
-  t.after(() => {
+  t.onTestFinished(() => {
     server.closeAllConnections();
     server.close();
   });
@@ -180,6 +206,74 @@ test("a legacy 200 is rejected and a cross-origin redirect never forwards eviden
     { code: "unconfirmed" },
   );
   assert.deepEqual(requests, []);
+
+  const adapter = spawn(process.execPath, ["scripts/conformance-adapter.mjs"], {
+    cwd: process.cwd(),
+    stdio: ["pipe", "pipe", "pipe"],
+  });
+  let stdout = "";
+  let stderr = "";
+  adapter.stdout.setEncoding("utf8").on("data", (chunk) => (stdout += chunk));
+  adapter.stderr.setEncoding("utf8").on("data", (chunk) => (stderr += chunk));
+  adapter.stdin.end(
+    `${JSON.stringify({
+      version: 1,
+      profile: "http-redirect-agent-v1",
+      case: { id: "HTTP-006" },
+      url: `${origin}/redirect`,
+      requirement: "opaque-test-token",
+    })}\n`,
+  );
+  const [code] = await once(adapter, "close");
+  assert.equal(code, 0, stderr);
+  assert.deepEqual(JSON.parse(stdout), {
+    id: "HTTP-006",
+    result: { client_accepts_constrained_success: false },
+  });
+  assert.equal(originRequirements.at(-1), '"opaque-test-token"');
+  assert.deepEqual(requests, []);
+});
+
+test("waiting returns terminal causal failure without retrying it", async (t) => {
+  let requests = 0;
+  const server = createServer((_req, res) => {
+    requests++;
+    res.writeHead(503, {
+      "Causal-Result": "unsatisfied",
+      "Content-Type": "application/problem+json",
+      "Cache-Control": "no-store",
+    });
+    res.end(
+      JSON.stringify({
+        type: "https://github.com/causalweb/spec/problems/requirements-not-satisfied",
+        title: "Not satisfied",
+        status: 503,
+        outcomes: [{ index: 0, outcome: "failed", retryable: false }],
+      }),
+    );
+  });
+  t.onTestFinished(() => {
+    server.closeAllConnections();
+    server.close();
+  });
+  const origin = await listen(server);
+  const result = await waitForObservation(`${origin}/view`, ["opaque-test-token"], {
+    authenticated: () => true,
+    signal: AbortSignal.timeout(2000),
+  });
+  assert.equal(result.kind, "causal-failure");
+  assert.equal(requests, 1);
+  for (const method of ["POST", "HEAD"]) {
+    await assert.rejects(
+      waitForObservation(`${origin}/view`, ["opaque-test-token"], {
+        authenticated: () => true,
+        request: { method },
+        signal: AbortSignal.timeout(2000),
+      }),
+      { code: "invalid-configuration" },
+    );
+  }
+  assert.equal(requests, 1);
 });
 
 test("malformed outcome order, excessive problems, and cancelled exchanges fail closed", async (t) => {
@@ -205,7 +299,7 @@ test("malformed outcome order, excessive problems, and cancelled exchanges fail 
         }),
       );
   });
-  t.after(() => {
+  t.onTestFinished(() => {
     server.closeAllConnections();
     server.close();
   });

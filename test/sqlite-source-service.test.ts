@@ -5,7 +5,7 @@ import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { DatabaseSync } from "node:sqlite";
-import { test } from "node:test";
+import { test } from "vitest";
 
 import { parseContext, Verifier } from "../src/index.js";
 
@@ -68,7 +68,7 @@ test("SQLite source commits fact and outbox before evidence and recovers a blank
   ]);
   let source = start(database, privateJwk);
   let origin = await source.origin;
-  context.after(async () => {
+  context.onTestFinished(async () => {
     if (source.child.exitCode === null) await stop(source.child, origin);
     assert.equal(resolve(root, ".."), resolve(tmpdir()));
     assert.ok(root.startsWith(join(resolve(tmpdir()), "causalweb-sqlite-source-")));

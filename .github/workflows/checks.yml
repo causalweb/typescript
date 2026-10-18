@@ -26,8 +26,20 @@ jobs:
           persist-credentials: false
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
+          repository: causalweb/spec
+          ref: b5a216510708553f7ac763d02ec12755df78d7f1
+          path: .spec-proposal
+          persist-credentials: false
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          repository: causalweb/spec
+          ref: 501a5fd6e5289748c482e34711c8e90b42f60aff
+          path: .spec-terminal-proposal
+          persist-credentials: false
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
           repository: causalweb/conformance
-          ref: d549b5fcaffc8c267e57de019b3d5fc521589873
+          ref: e025a7e8728e1bfa3b5bc8490ee4fb130d6ff135
           path: .conformance
           persist-credentials: false
       - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
@@ -37,22 +49,36 @@ jobs:
       - run: npm ci --prefix .conformance --ignore-scripts
       - run: npm run check
       - run: npm test
-      - run: node scripts/check-spec.mjs .spec
+      - run: npm run demo
+      - run: node scripts/check-spec.mjs .spec .spec-proposal
       - run: node .conformance/runner.mjs --spec .spec -- node scripts/conformance-adapter.mjs
       - run: node .conformance/runner.mjs --spec .spec --profile prefix-evaluation-v1 -- node scripts/conformance-adapter.mjs
       - run: node .conformance/runner.mjs --spec .spec --profile context-reduction-v1 -- node scripts/conformance-adapter.mjs
       - run: node .conformance/runner.mjs --spec .spec --profile http-client-confirmation-v1 -- node scripts/conformance-adapter.mjs
+      - run: node .conformance/runner.mjs --spec .spec --profile http-redirect-agent-v1 -- node scripts/conformance-adapter.mjs
       - run: node .conformance/runner.mjs --spec .spec --profile http-observer-v1 -- node scripts/conformance-adapter.mjs
       - run: node .conformance/runner.mjs --spec .spec --profile http-transport-server-v1 -- node scripts/transport-conformance-server.mjs
+      - run: node .conformance/runner.mjs --spec .spec-proposal --profile uri-identities-draft-v1 -- node scripts/conformance-adapter.mjs
+      - run: node .conformance/runner.mjs --spec .spec-terminal-proposal --profile terminal-failure-draft-v1 -- node scripts/terminal-failure-conformance-adapter.mjs
       - run: npm audit --audit-level=high
-      - run: npm run test:package
-      - run: npm run changeset:status
+      - if: matrix.os == 'ubuntu-24.04'
+        run: npm run test:package -- --preview-artifact
+      - if: matrix.os == 'windows-latest'
+        run: npm run test:package
+      - run: npm run changeset:status -- --since ${{ github.event.pull_request.base.sha || github.sha }}
       - run: npm run release:check
       - if: github.event_name == 'pull_request'
         run: npm run release:check
         env:
           CAUSALWEB_CHANGESET_BASE: ${{ github.event.pull_request.base.sha }}
       - run: npm run test:release
+      - if: matrix.os == 'ubuntu-24.04'
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
+        with:
+          name: typescript-preview-${{ github.sha }}
+          path: preview/
+          if-no-files-found: error
+          retention-days: 30
   peer:
     runs-on: ubuntu-24.04
     timeout-minutes: 15

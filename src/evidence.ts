@@ -1,45 +1,13 @@
 import { KeyObject, randomUUID, sign, verify } from "node:crypto";
 import { invalid, ProtocolError } from "./error.js";
 import { integer, type JsonObject, nonempty, object, parseObject } from "./json.js";
+import { DEFAULT_LIMITS, type Limits, validateLimits } from "./limits.js";
 import { absoluteUri, httpsIssuer } from "./uri.js";
 
 export const PROFILE = "https://github.com/causalweb/spec/profiles/prefix-01";
 export const CLAIM = "https://github.com/causalweb/spec/claims/v1";
 export const MAX_DATE = 9007199254740991n;
 export const MAX_POSITION = 18446744073709551615n;
-
-export interface Limits {
-  readonly maxRequirements: number;
-  readonly maxHeaderBytes: number;
-  readonly maxTokenBytes: number;
-  readonly maxDecodedBytes: number;
-  readonly maxJsonDepth: number;
-}
-export const DEFAULT_LIMITS: Readonly<Limits> = Object.freeze({
-  maxRequirements: 16,
-  maxHeaderBytes: 16384,
-  maxTokenBytes: 8192,
-  maxDecodedBytes: 8192,
-  maxJsonDepth: 32,
-});
-
-export function validateLimits(limits: Limits): void {
-  const fields: readonly (keyof Limits)[] = [
-    "maxRequirements",
-    "maxHeaderBytes",
-    "maxTokenBytes",
-    "maxDecodedBytes",
-    "maxJsonDepth",
-  ];
-  if (
-    !limits ||
-    typeof limits !== "object" ||
-    fields.some((key) => !Number.isSafeInteger(limits[key]) || limits[key] <= 0) ||
-    limits.maxJsonDepth < 2 ||
-    limits.maxJsonDepth > 64
-  )
-    throw new ProtocolError("invalid-configuration");
-}
 
 export function position(value: string): bigint {
   if (
@@ -112,6 +80,9 @@ class CheckedEvidence {
   }
   get position(): string {
     return object(this.#claims[CLAIM]).position as string;
+  }
+  get issuedAt(): bigint {
+    return integer(this.#claims.iat, MAX_DATE);
   }
   get expiresAt(): bigint {
     return integer(this.#claims.exp, MAX_DATE);

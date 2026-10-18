@@ -1,0 +1,11 @@
+{
+  "entry": ["src/*.ts"],
+  "root": "src",
+  "outDir": "dist/src",
+  "format": "esm",
+  "target": "es2022",
+  "fixedExtension": false,
+  "unbundle": true,
+  "dts": false,
+  "clean": false
+}

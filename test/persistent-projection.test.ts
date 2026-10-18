@@ -4,7 +4,7 @@ import { mkdir, readFile, rename, rm, writeFile } from "node:fs/promises";
 import { createServer, type IncomingMessage, type Server, type ServerResponse } from "node:http";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
-import { test } from "node:test";
+import { test } from "vitest";
 import {
   contextHeaders,
   fetchObservation,
@@ -424,7 +424,7 @@ function projectionHttp(projection: ProjectionService): Server {
 test("two durable local services reject stale reads, recover, and preserve source order", async (context) => {
   const root = join(tmpdir(), `causalweb-persistent-demo-${randomUUID()}`);
   await mkdir(root, { recursive: true });
-  context.after(async () => {
+  context.onTestFinished(async () => {
     assert.equal(resolve(root, ".."), resolve(tmpdir()));
     assert.ok(root.startsWith(join(resolve(tmpdir()), "causalweb-persistent-demo-")));
     await rm(root, { recursive: true, force: true });
@@ -437,7 +437,7 @@ test("two durable local services reject stale reads, recover, and preserve sourc
     projectionServer = projectionHttp(projection);
   const sourceOrigin = await listen(sourceServer),
     projectionOrigin = await listen(projectionServer);
-  context.after(() => {
+  context.onTestFinished(() => {
     close(sourceServer);
     close(projectionServer);
   });

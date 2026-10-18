@@ -1,20 +1,30 @@
 # Causal Web for TypeScript
 
-An independent experimental Causal Web implementation for Node.js 24 and newer. It implements its own evidence validation, prefix evaluation, and HTTP behavior. It does not call Rust, load a Rust binary, or use a shared protocol engine.
+An independent experimental Causal Web implementation for Node.js 24 and newer. It implements its own evidence validation, prefix evaluation, and HTTP behavior. Its separate `@causalweb/protocol/client` entry is portable Fetch client code for browser-capable runtimes; it transports opaque evidence but does not issue or verify it. The implementation does not call Rust, load a Rust binary, or use a shared protocol engine.
 
 The [specification](https://github.com/causalweb/spec) remains authoritative. This source preview follows draft `0.1.1-experimental` and vector revision `0.1.4`, with the exact commit in [SPEC_REVISION](SPEC_REVISION). There is no npm release yet; the package is deliberately private. The package name in `package.json` does not claim registry availability or ownership.
 
-## Run it
+## Try the local demo
 
 ```sh
 git clone https://github.com/causalweb/typescript.git
 cd typescript
 npm ci --ignore-scripts
+npm run demo
+```
+
+The demo starts separate HTTPS source and view processes with temporary SQLite databases. It shows a stale constrained read, recovers authenticated delivery, and confirms the read through the SDK client. It uses a test-only localhost certificate and disposable keys and credentials, then removes its temporary data. It is not a deployment recipe; the npm tarball contains the SDK but not this reference service. In the source checkout, read `reference/README.md` for persistent storage and operator-supplied certificates.
+
+## Verify the source and package
+
+```sh
 npm test
 npm run test:package
 ```
 
-The package check builds a real `.tgz`, installs it with its runtime dependency into a temporary application outside this repository, compiles with strict Node-only types, and runs [the consumer example](test/consumer/main.ts). Negative type tests check that callers cannot substitute a JavaScript `number` for a position or an unauthenticated object/string for verified evidence. This is package-consumption evidence, not a registry release or storage-durability test.
+The package check builds a real `.tgz`, installs it with its runtime dependency into a temporary application outside this repository, compiles strict Node and portable-client consumers, and runs the consumers in the source checkout's `test/consumer/`. It also runs the small [source-checkout order client](https://github.com/causalweb/typescript/blob/preview/typescript-product-milestone/reference/client.mjs) from that temporary application against the reference's two SQLite/HTTPS processes. The quickstart first observes one committed order as stale before delivery resumes; the copied client then writes another order and confirms it through the installed SDK client. Negative type tests check that callers cannot substitute a JavaScript `number` for a position or an unauthenticated object/string for verified evidence. This is package-consumption and local process evidence, not a registry release, external developer result, or power-loss durability test.
+
+The SDK's published JavaScript is built with tsdown in unbundle mode so its existing ESM entry points and relative modules remain intact. TypeScript still checks the source, emits declarations, and compiles decorator-based integration tests; the package check exercises the resulting tarball.
 
 The tests exercise all shared fixtures, strict trust/encoding checks, and real loopback HTTP. They include a [persistent local-service experiment](PERSISTENT_DEMO.md): a source HTTP service writes an outbox before returning evidence, a projection service writes representation bytes and frontier in one document, and constrained reads move from `unsatisfied` to confirmed after propagation. It covers delayed, out-of-order, duplicate, forged, interrupted, and recovered events. A separate [SQLite experiment](SQLITE_DEMO.md) runs source and observer processes with independent transactional databases, including recovery after source or observer interruption. A POSIX-only [cross-runtime experiment](CROSS_RUNTIME_DEMO.md) runs a TypeScript source process and a Rust observer process over loopback HTTP. None is a production adapter or full deployment conformance.
 
@@ -35,10 +45,10 @@ That development-only command checks both protocol engines against each other's 
 
 ## Integrate an observation
 
-After obtaining evidence from an operation that actually committed, a Node.js application can use the built package directly from this checkout:
+After installing the preview archive, a Node.js application can pass evidence from an operation that actually committed to the public client entry:
 
 ```ts
-import { fetchObservation } from "./dist/src/index.js";
+import { fetchObservation } from "@causalweb/protocol/client";
 
 const result = await fetchObservation(viewUrl, evidenceFromCommittedOperations, {
   request: { headers: { Authorization: authorizationHeader } },
@@ -58,6 +68,20 @@ if (result.kind === "confirmed") {
 The application supplies its existing authentication check; evidence does not grant access. The helper sends `no-cache, no-store`, never follows redirects, imposes a ten-second exchange deadline, and permits earlier cancellation through `request.signal`. It rejects plaintext transport except literal loopback (`127.0.0.1` or `::1`) for protected local development. Integrations using another administratively protected channel can use the lower-level field/confirmation helpers with an explicitly reviewed transport.
 
 For causal failures, the helper consumes and validates the bounded problem body and returns it as `result.problem`; `response.body` is then consumed and its reader lock is released. Confirmed response bodies remain available and belong to the caller, who must consume or cancel them. Do not turn an error into an unconstrained retry without an explicit caller decision.
+
+If a view may lag behind a committed operation, `waitForObservation` handles that one safe polling case:
+
+```ts
+import { waitForObservation } from "@causalweb/protocol/client";
+
+const result = await waitForObservation(viewUrl, evidenceTokens, {
+  request: { headers: { Authorization: authorizationHeader } },
+  authenticated: response => applicationAcceptsAuthentication(response),
+  signal: AbortSignal.timeout(15_000),
+});
+```
+
+It accepts only `GET`, retries only when every validated outcome is `unsatisfied` and retryable, waits 250 ms between attempts, and cancels each rejected response body. It returns confirmations, ordinary errors, and other causal failures without retrying them. Supply a timed signal to bound the whole wait; aborting it rejects the call. It does not retry a write or authenticate evidence from the source. The protocol permits explicitly designated read-only `POST` observations, but this polling helper does not retry them automatically; use `fetchObservation` and an application-specific retry policy. Keep the application's request key for a separate write retry after an uncertain write response.
 
 ### Node HTTP observer bridge
 
@@ -115,7 +139,7 @@ This is compatibility evidence for the Node bridge, not a Nest module, intercept
 | API | Provides | Does not establish |
 | --- | --- | --- |
 | `Issuer.issueCommitted` | ES256 evidence with a collision-resistant generated identifier unless one is supplied | Source commitment, outbox durability, stable position allocation, or history recovery. |
-| `Verifier.verify` | Bounded canonical JWS/JSON processing, exact issuer/domain authority, audience, subject, version, lifetime, and expiry policy | Projection relevance or applied state. Keys are configured locally, never fetched from evidence. |
+| `Verifier.verify` | Bounded canonical JWS/JSON processing, exact issuer/domain authority, audience, subject, version, lifetime, expiry policy, and exact `bigint` issuance/expiry times for application binding | Projection relevance or applied state. Keys are configured locally, never fetched from evidence. |
 | `Snapshot.evaluate` | Six outcomes from bound per-component lineage; bottom differs from unknown and position zero | Whether an adapter's lineage claim is truthful or crash-safe. |
 | `observe` | Validation before reads, current authorization/expiry rechecks, all-dependency enforcement, ordered failures and cache fields | TLS termination, CORS/CSRF, source delivery, storage transactions, route designation, or transport cancellation. |
 
@@ -123,7 +147,23 @@ Use `bigint` for positions, NumericDates, lifetime, skew, and the UTC clock. The
 
 Observers make one attempt and advertise `max_wait_seconds: 0`. `Prefer: wait` is ignored. A carrier can opt into the Prefix Profile's safe reduction rule with `retainedContextIndices` only after it has verified each evidence item under current policy. The helper returns indices into the original ordered compact-token list; it never rewrites or synthesizes evidence and retains every item it cannot safely omit. Observation evaluation itself preserves request order and duplicate indices.
 
-Read [CONFORMANCE.md](CONFORMANCE.md), [SECURITY.md](SECURITY.md), and [RELEASING.md](RELEASING.md) before deployment. The Node.js implementation is not yet a browser/WebCrypto package. Discussion belongs in [Causal Web Discussions](https://github.com/orgs/causalweb/discussions).
+Read [CONFORMANCE.md](CONFORMANCE.md), [SECURITY.md](SECURITY.md), and [RELEASING.md](RELEASING.md) before deployment. The issuer, verifier, observer, and server adapters are Node.js code; `@causalweb/protocol/client` is a portable Fetch client entry, not a browser/WebCrypto issuer or verifier. Discussion belongs in [Causal Web Discussions](https://github.com/orgs/causalweb/discussions).
+
+An external evaluator can use the [walkthrough and pilot protocol](PILOT.md) to record an independent integration attempt. No external result is claimed yet.
+
+### Portable Fetch client
+
+Use the client entry where Fetch, `Headers`, `Response`, `URL`, and abort signals are available. It preserves Causal Web request/response checks without importing Node cryptography or server adapters.
+
+```ts
+import { fetchObservation } from "@causalweb/protocol/client";
+
+const result = await fetchObservation("https://view.example/orders/42", evidenceTokens, {
+  authenticated: async (response) => response.headers.has("x-authenticated-view"),
+});
+```
+
+The browser or host application must obtain evidence over an authenticated channel, protect it from inappropriate script/log exposure, and decide whether a response is authenticated. This client does not validate the evidence signature, discover keys, bypass CORS, follow redirects, or turn an ordinary read into a causal observation. It permits plaintext only for literal loopback testing and uses one bounded ten-second request attempt.
 
 ## Use the source package in an application
 

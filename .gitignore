@@ -1,5 +1,8 @@
 /node_modules/
 /dist/
+/preview/
 /.spec/
+/.spec-proposal/
+/.spec-terminal-proposal/
 /.rust/
 *.tgz

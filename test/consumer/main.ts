@@ -11,6 +11,7 @@ import {
   Snapshot,
   sourceKey,
   Verifier,
+  waitForObservation,
 } from "@causalweb/protocol";
 
 // Synthetic SDK exercise. This does not establish source durability or recovery.
@@ -30,10 +31,29 @@ const verifier = new Verifier(audience, [
     clockSkewSeconds: 0n,
   },
 ]);
+assert.throws(
+  () => new Issuer(`${source}#fragment`, "local-test-key", privateKey, new Set([domain]), 300n),
+  { code: "invalid-configuration" },
+);
+assert.throws(
+  () =>
+    new Verifier(audience, [
+      {
+        issuer: source,
+        keys: new Map([["local-test-key", publicKey]]),
+        domains: new Set([`${domain}#`]),
+        maxLifetimeSeconds: 300n,
+        clockSkewSeconds: 0n,
+      },
+    ]),
+  { code: "invalid-configuration" },
+);
 const evidence = issuer.issueCommitted(
   { subject, audiences: [audience], domain, position: 5n, issuedAt: 100n, expiresAt: 200n },
   100n,
 );
+assert.equal(verifier.verify(evidence, subject, 100n).issuedAt, 100n);
+assert.equal(typeof waitForObservation, "function");
 const request = { method: "GET", headers: requestHeaders([evidence]) };
 
 function readAt(frontier: bigint): Snapshot<Representation> {

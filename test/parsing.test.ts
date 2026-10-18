@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { generateKeyPairSync } from "node:crypto";
-import { test } from "node:test";
+import { test } from "vitest";
 import {
   DEFAULT_LIMITS,
   Issuer,
@@ -24,7 +24,7 @@ test("positions and URIs reject control and Unicode line terminators", () => {
 test("generic URIs preserve identifiers and do not repair invalid syntax", () => {
   for (const uri of [
     "urn:test:opaque",
-    "HTTPS://EXAMPLE.COM/a%2Fb?x=y#z",
+    "HTTPS://EXAMPLE.COM/a%2Fb?x=y%23z",
     "https://[::1]/path",
     "https://[v1.host]/",
     "scheme:",
@@ -37,11 +37,85 @@ test("generic URIs preserve identifiers and do not repair invalid syntax", () =>
     "https://host/back\\slash",
     "https://host/a b",
     "https://[bad-ip]/",
+    "https://[fe80::1%eth0]/",
+    "https://[fe80::1%25eth0]/",
     "https://host:bad/",
     "https://host/#a#b",
+    "https://host/#fragment",
+    "https://host/#",
+    "urn:test:a#fragment",
     "https://host/é",
   ])
     assert.equal(absoluteUri(uri), false, uri);
+  assert.equal(httpsIssuer("https://[fe80::1%25eth0]/"), false);
+});
+
+test("fragment-free URI syntax applies to issuer and configured identities", () => {
+  const { publicKey, privateKey } = generateKeyPairSync("ec", { namedCurve: "prime256v1" });
+  assert.equal(absoluteUri("urn:test:a%23fragment"), true);
+  assert.equal(httpsIssuer("HTTPS://ISSUER.EXAMPLE/a%23part"), true);
+  for (const issuer of ["https://issuer.example/#", "https://issuer.example/#fragment"]) {
+    assert.equal(httpsIssuer(issuer), false);
+    assert.throws(
+      () =>
+        new Verifier("audience", [
+          {
+            issuer,
+            keys: new Map([["test", publicKey]]),
+            domains: new Set(["urn:test:domain"]),
+            maxLifetimeSeconds: 1000n,
+            clockSkewSeconds: 0n,
+          },
+        ]),
+      { code: "invalid-configuration" },
+    );
+    assert.throws(
+      () => new Issuer(issuer, "test", privateKey, new Set(["urn:test:domain"]), 1000n),
+      { code: "invalid-configuration" },
+    );
+  }
+  assert.throws(
+    () =>
+      new Issuer(
+        "https://issuer.example",
+        "test",
+        privateKey,
+        new Set(["urn:test:domain#"]),
+        1000n,
+      ),
+    { code: "invalid-configuration" },
+  );
+});
+
+test("signed issuer identity uses exact URI spelling", () => {
+  const { publicKey, privateKey } = generateKeyPairSync("ec", { namedCurve: "prime256v1" });
+  const issuer = "HTTPS://issuer.example";
+  const domain = "urn:test:domain";
+  const token = new Issuer(issuer, "test", privateKey, new Set([domain]), 1000n).issueCommitted(
+    {
+      subject: "tenant",
+      audiences: ["audience"],
+      domain,
+      position: 1n,
+      issuedAt: 1n,
+      expiresAt: 1000n,
+    },
+    100n,
+  );
+  const verifier = (trustedIssuer: string) =>
+    new Verifier("audience", [
+      {
+        issuer: trustedIssuer,
+        keys: new Map([["test", publicKey]]),
+        domains: new Set([domain]),
+        maxLifetimeSeconds: 1000n,
+        clockSkewSeconds: 0n,
+      },
+    ]);
+  assert.equal(verifier(issuer).verify(token, "tenant", 100n).issuer, issuer);
+  assert.throws(() => verifier("https://issuer.example").verify(token, "tenant", 100n), {
+    code: "invalid-evidence",
+  });
 });
 
 test("required limits cannot be omitted by JavaScript callers", () => {

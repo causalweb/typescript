@@ -11,15 +11,10 @@ const regName = component("");
 const userInfo = component(":");
 
 export function absoluteUri(value: string): boolean {
-  if (typeof value !== "string" || /[^\x21-\x7E]/.test(value)) return false;
+  if (typeof value !== "string" || /[^\x21-\x7E]/.test(value) || value.includes("#")) return false;
   const scheme = /^[A-Za-z][A-Za-z0-9+.-]*:/.exec(value)?.[0];
   if (!scheme) return false;
   let rest = value.slice(scheme.length);
-  const hash = rest.indexOf("#");
-  if (hash !== -1) {
-    if (!queryChars.test(rest.slice(hash + 1))) return false;
-    rest = rest.slice(0, hash);
-  }
   const question = rest.indexOf("?");
   if (question !== -1) {
     if (!queryChars.test(rest.slice(question + 1))) return false;
@@ -38,6 +33,7 @@ export function absoluteUri(value: string): boolean {
       const close = authority.indexOf("]");
       if (close === -1) return false;
       const ip = authority.slice(1, close);
+      if (ip.includes("%")) return false;
       if (
         isIP(ip) !== 6 &&
         !new RegExp(`^[vV][0-9A-Fa-f]+\\.[${unreserved}${subdelims}:]+$`).test(ip)

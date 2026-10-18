@@ -8,10 +8,8 @@ export {
 export {
   CLAIM,
   type CommittedEvidenceInput,
-  DEFAULT_LIMITS,
   Issuer,
   type IssuerTrust,
-  type Limits,
   MAX_DATE,
   MAX_POSITION,
   PROFILE,
@@ -29,12 +27,15 @@ export {
   type ObservationFetchOptions,
   type ObservationOptions,
   type ObservationResult,
+  type ObservationWaitOptions,
   observe,
   parseContext,
   type Representation,
   requestHeaders,
   serializeContext,
+  waitForObservation,
 } from "./http.js";
+export { DEFAULT_LIMITS, type Limits } from "./limits.js";
 export {
   handleNodeObservation,
   hasCausalRequirement,

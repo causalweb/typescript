@@ -1,10 +1,10 @@
 import "reflect-metadata";
 import assert from "node:assert/strict";
 import { generateKeyPairSync } from "node:crypto";
-import { test } from "node:test";
 import { Controller, Get, Module, Req, Res } from "@nestjs/common";
 import { NestFactory } from "@nestjs/core";
 import type { Request, Response } from "express";
+import { test } from "vitest";
 import {
   fetchObservation,
   handleNodeObservation,
@@ -79,7 +79,7 @@ test("the NestJS Express integration owns causal responses without replacing ord
   class ApplicationModule {}
 
   const app = await NestFactory.create(ApplicationModule, { logger: false });
-  t.after(async () => {
+  t.onTestFinished(async () => {
     await app.close();
   });
   await app.listen(0, "127.0.0.1");
