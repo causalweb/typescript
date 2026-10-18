@@ -26,6 +26,12 @@ jobs:
           persist-credentials: false
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
+          repository: causalweb/spec
+          ref: 56d3de580bd46726372e544cdc3214cb99142647
+          path: .spec-proposal
+          persist-credentials: false
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
           repository: causalweb/conformance
           ref: d549b5fcaffc8c267e57de019b3d5fc521589873
           path: .conformance
@@ -38,7 +44,7 @@ jobs:
       - run: npm run check
       - run: npm test
       - run: npm run demo
-      - run: node scripts/check-spec.mjs .spec
+      - run: node scripts/check-spec.mjs .spec .spec-proposal
       - run: node .conformance/runner.mjs --spec .spec -- node scripts/conformance-adapter.mjs
       - run: node .conformance/runner.mjs --spec .spec --profile prefix-evaluation-v1 -- node scripts/conformance-adapter.mjs
       - run: node .conformance/runner.mjs --spec .spec --profile context-reduction-v1 -- node scripts/conformance-adapter.mjs
