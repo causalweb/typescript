@@ -21,7 +21,7 @@ import {
   sourceKey,
   Verifier,
 } from "@causalweb/protocol";
-import { OrderSourceStore, OrderViewStore } from "./order-store.mjs";
+import { ORDER_CONTRACT, ORDER_SCHEMA, OrderSourceStore, OrderViewStore } from "./order-store.mjs";
 
 const MAX_BODY_BYTES = 16_384;
 const DELIVERY_TYPE = "causalweb-reference-delivery+jwt";
@@ -321,8 +321,8 @@ function snapshot() {
       headers: new Headers({ "content-type": "application/json" }),
       body: Buffer.from(JSON.stringify({ orders: state.orders })),
     },
-    "reference-orders/v1",
-    "orders/v1",
+    ORDER_CONTRACT,
+    ORDER_SCHEMA,
     new Map([
       [
         sourceKey(config.issuer, config.domain),
@@ -334,6 +334,9 @@ function snapshot() {
               : BigInt(state.frontier),
           ],
           progressPossible: true,
+          ...(state.firstTerminalFailure === undefined
+            ? {}
+            : { firstTerminalFailure: BigInt(state.firstTerminalFailure) }),
         },
       ],
     ]),

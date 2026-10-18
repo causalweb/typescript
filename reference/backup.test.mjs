@@ -64,7 +64,7 @@ test("quiescent paired SQLite backup restores source facts and a state-bound vie
   );
   let source = new OrderSourceStore(sourcePath, IDENTITY);
   let view = new OrderViewStore(viewPath, IDENTITY);
-  for (const order of ["first", "second"]) {
+  for (const order of ["first", "second", "third"]) {
     const event = source.commit(order, 1000n, 4600n, order);
     const evidence = issuer.issueCommitted(
       {
@@ -81,7 +81,13 @@ test("quiescent paired SQLite backup restores source facts and a state-bound vie
     source.materialize(event.id, evidence, 1000n, 4600n);
     if (order === "first") view.accept({ ...event, evidence });
   }
-  assert.deepEqual(view.snapshot(), { frontier: "1", orders: ["first"] });
+  view.accept(source.undelivered()[2]);
+  view.decideFailure("failed", "3", "operator-a");
+  assert.deepEqual(view.snapshot(), {
+    frontier: "1",
+    orders: ["first"],
+    firstTerminalFailure: "3",
+  });
   source.close();
   view.close();
 
@@ -119,13 +125,17 @@ test("quiescent paired SQLite backup restores source facts and a state-bound vie
   await assert.rejects(() => restoreBackup(backupPath, restoredPath));
   source = new OrderSourceStore(join(restoredPath, "source.sqlite"), IDENTITY);
   view = new OrderViewStore(join(restoredPath, "view.sqlite"), IDENTITY);
-  assert.deepEqual(view.snapshot(), { frontier: "1", orders: ["first"] });
+  assert.deepEqual(view.snapshot(), {
+    frontier: "1",
+    orders: ["first"],
+    firstTerminalFailure: "3",
+  });
   assert.deepEqual(
     source.undelivered().map((event) => event.position),
-    ["1", "2"],
+    ["1", "2", "3"],
   );
   view.accept(source.undelivered()[1]);
-  assert.deepEqual(view.snapshot(), { frontier: "2", orders: ["first", "second"] });
+  assert.deepEqual(view.snapshot(), { frontier: "3", orders: ["first", "second", "third"] });
   source.close();
   view.close();
 

@@ -6,6 +6,7 @@ import { DatabaseSync, backup as sqliteBackup } from "node:sqlite";
 import { fileURLToPath } from "node:url";
 
 import { position } from "@causalweb/protocol";
+import { ORDER_CONTRACT, ORDER_SCHEMA } from "./order-store.mjs";
 
 const FORMAT = "causalweb-order-reference-backup/v2";
 const FILES = ["source.sqlite", "view.sqlite"];
@@ -57,7 +58,7 @@ function inspectPair(sourcePath, viewPath) {
     if (
       (sourceIdentity?.version !== 1 && sourceIdentity?.version !== 2) ||
       sourceIdentity.role !== "source" ||
-      viewIdentity?.version !== 1 ||
+      (viewIdentity?.version !== 1 && viewIdentity?.version !== 2) ||
       viewIdentity.role !== "view" ||
       ["issuer", "domain", "audience", "subject"].some(
         (field) => sourceIdentity[field] !== viewIdentity[field],
@@ -71,6 +72,15 @@ function inspectPair(sourcePath, viewPath) {
         .get()
     )
       throw new Error("source request mapping is missing");
+    if (
+      viewIdentity.version === 2 &&
+      !view
+        .prepare(
+          "SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'view_failure_events'",
+        )
+        .get()
+    )
+      throw new Error("view failure history is missing");
     let next = 1n;
     for (const row of source
       .prepare("SELECT position FROM source_orders ORDER BY length(position), position")
@@ -111,6 +121,29 @@ function inspectPair(sourcePath, viewPath) {
       const fact = lookup.get(row.position);
       if (!fact?.evidence || fact.event_id !== row.event_id || fact.order_value !== row.order_value)
         throw new Error("view pending fact disagrees with source");
+    }
+    if (viewIdentity.version === 2) {
+      const latest = new Map();
+      for (const row of view
+        .prepare(
+          "SELECT position, contract, schema, action, operator FROM view_failure_events ORDER BY id",
+        )
+        .iterate()) {
+        if (
+          position(row.position) < 1n ||
+          row.contract !== ORDER_CONTRACT ||
+          row.schema !== ORDER_SCHEMA ||
+          !["failed", "resolved"].includes(row.action) ||
+          !row.operator
+        )
+          throw new Error("view failure history is invalid");
+        latest.set(row.position, row.action);
+      }
+      for (const [value, action] of latest) {
+        if (action !== "failed" || position(value) <= frontier) continue;
+        if (!view.prepare("SELECT 1 FROM view_pending WHERE position = ?").get(value))
+          throw new Error("active view failure has no pending fact");
+      }
     }
   } finally {
     source.close();

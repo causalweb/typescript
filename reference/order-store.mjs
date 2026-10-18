@@ -3,6 +3,9 @@ import { DatabaseSync } from "node:sqlite";
 
 import { MAX_POSITION, position } from "@causalweb/protocol";
 
+export const ORDER_CONTRACT = "reference-orders/v1";
+export const ORDER_SCHEMA = "orders/v1";
+
 function required(row, name) {
   if (row === undefined) throw new Error(`missing ${name}`);
   return row;
@@ -28,7 +31,7 @@ function bindIdentity(database, role, identity) {
     throw new Error("database identity is required");
   database.exec("BEGIN IMMEDIATE");
   try {
-    const schemaVersion = role === "source" ? 2 : 1;
+    const schemaVersion = 2;
     const existing = database
       .prepare(
         "SELECT name FROM sqlite_master WHERE type = 'table' AND name = 'reference_identity'",
@@ -72,7 +75,7 @@ function bindIdentity(database, role, identity) {
           identity.subject,
         );
     } else if (
-      (bound.version !== schemaVersion && !(role === "source" && bound.version === 1)) ||
+      (bound.version !== schemaVersion && bound.version !== 1) ||
       bound.role !== role ||
       ["issuer", "domain", "audience", "subject"].some((field) => bound[field] !== identity[field])
     )
@@ -90,8 +93,31 @@ function bindIdentity(database, role, identity) {
           position TEXT NOT NULL UNIQUE REFERENCES source_orders(position)
         );
       `);
-      if (bound?.version === 1)
-        database.exec(`
+    } else {
+      const decisionsExist =
+        database
+          .prepare(
+            "SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'view_failure_events'",
+          )
+          .get() !== undefined;
+      if (bound?.version === 2 && !decisionsExist)
+        throw new Error("view failure history is missing");
+      if (bound?.version === 1 && decisionsExist)
+        throw new Error("view failure history predates schema upgrade");
+      database.exec(`
+        CREATE TABLE IF NOT EXISTS view_failure_events (
+          id INTEGER PRIMARY KEY,
+          position TEXT NOT NULL,
+          contract TEXT NOT NULL,
+          schema TEXT NOT NULL,
+          action TEXT NOT NULL CHECK (action IN ('failed', 'resolved')),
+          operator TEXT NOT NULL,
+          recorded_at TEXT NOT NULL
+        );
+      `);
+    }
+    if (bound?.version === 1)
+      database.exec(`
           CREATE TABLE reference_identity_next (
             id INTEGER PRIMARY KEY CHECK (id = 1),
             version INTEGER NOT NULL CHECK (version IN (1, 2)),
@@ -106,7 +132,6 @@ function bindIdentity(database, role, identity) {
           DROP TABLE reference_identity;
           ALTER TABLE reference_identity_next RENAME TO reference_identity;
         `);
-    }
     database.exec("COMMIT");
   } catch (error) {
     database.exec("ROLLBACK");
@@ -160,6 +185,26 @@ function assertSourceLineage(database) {
   const state = database.prepare("SELECT next_position FROM source_state WHERE id = 1").get();
   if (state?.next_position !== expected.toString())
     throw new Error("source lineage requires repair");
+}
+
+function latestFailureActions(database) {
+  const actions = new Map();
+  const rows = database.prepare(
+    "SELECT position, contract, schema, action, operator FROM view_failure_events ORDER BY id",
+  );
+  for (const row of rows.iterate()) {
+    canonicalPosition(row.position);
+    if (
+      row.contract !== ORDER_CONTRACT ||
+      row.schema !== ORDER_SCHEMA ||
+      (row.action !== "failed" && row.action !== "resolved") ||
+      typeof row.operator !== "string" ||
+      !row.operator
+    )
+      throw new Error("view failure history requires repair");
+    actions.set(row.position, row.action);
+  }
+  return actions;
 }
 
 export class OrderSourceStore {
@@ -474,14 +519,70 @@ export class OrderViewStore {
     this.#faultPoint("after-view-commit");
   }
 
+  decideFailure(action, value, operator) {
+    const selected = canonicalPosition(value).toString();
+    if (
+      typeof operator !== "string" ||
+      !operator ||
+      operator.length > 128 ||
+      Array.from(operator).some((character) => character.charCodeAt(0) < 32)
+    )
+      throw new Error("operator identity is required");
+    if (action !== "failed" && action !== "resolved") throw new Error("invalid failure action");
+    this.#database.exec("BEGIN IMMEDIATE");
+    try {
+      const cut = readViewCut(this.#database, false);
+      if (cut.frontier === "unknown") throw new Error("view lineage requires repair");
+      const latest = latestFailureActions(this.#database).get(selected);
+      if (action === "failed") {
+        const frontier = cut.frontier === null ? 0n : canonicalPosition(cut.frontier);
+        if (BigInt(selected) <= frontier) throw new Error("position is already accounted for");
+        if (!this.#database.prepare("SELECT 1 FROM view_pending WHERE position = ?").get(selected))
+          throw new Error("failure position has no authenticated pending record");
+      } else if (latest !== "failed" && latest !== "resolved") {
+        throw new Error("position has no active failure decision");
+      }
+      if (latest !== action)
+        this.#database
+          .prepare(
+            "INSERT INTO view_failure_events (position, contract, schema, action, operator, recorded_at) VALUES (?, ?, ?, ?, ?, ?)",
+          )
+          .run(selected, ORDER_CONTRACT, ORDER_SCHEMA, action, operator, new Date().toISOString());
+      this.#database.exec("COMMIT");
+    } catch (error) {
+      this.#database.exec("ROLLBACK");
+      throw error;
+    }
+  }
+
   snapshot() {
     this.#database.exec("BEGIN");
     try {
       const cut = readViewCut(this.#database, true);
+      let firstTerminalFailure;
+      if (cut.frontier !== "unknown") {
+        const frontier = cut.frontier === null ? 0n : canonicalPosition(cut.frontier);
+        try {
+          for (const [value, action] of latestFailureActions(this.#database)) {
+            const failed = BigInt(value);
+            if (action !== "failed" || failed <= frontier) continue;
+            if (!this.#database.prepare("SELECT 1 FROM view_pending WHERE position = ?").get(value))
+              throw new Error("failure record has no pending fact");
+            if (firstTerminalFailure === undefined || failed < firstTerminalFailure)
+              firstTerminalFailure = failed;
+          }
+        } catch {
+          cut.frontier = "unknown";
+          firstTerminalFailure = undefined;
+        }
+      }
       this.#database.exec("COMMIT");
       return {
         frontier: cut.frontier,
         orders: cut.rows.map((row) => row.order_value),
+        ...(firstTerminalFailure === undefined
+          ? {}
+          : { firstTerminalFailure: firstTerminalFailure.toString() }),
       };
     } catch (error) {
       this.#database.exec("ROLLBACK");
