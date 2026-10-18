@@ -55,3 +55,16 @@ One run per count on the same Windows/Node host as above:
 | 500 | 2.05 s | 7.37 s | 68 | 3.9 ms | 6.2 ms | 85 |
 
 These are one-off samples, not steady-state rates; notably the 500-write submission phase was faster than the 300-write run, so the numbers should not be extrapolated as a scaling curve. The source delivers while writes are still arriving, and confirmation includes polling and the view returning the entire order list. This mode does not sample child-process memory/CPU, vary concurrent clients, use an operator certificate, or hold load long enough to establish an SLO. It cannot justify a deployment sizing recommendation.
+
+## Operator-decision history read sample
+
+A separate local probe on 2026-10-18 used Node.js v24.18.0 on Windows 10.0.26200. Reproduce it with `npm run measure:failure-history`. It opens one view database with a fixture pending position 2 and inserts alternating `failed`/`resolved` decisions for that position directly in one SQLite transaction. Each row has the reference contract, schema, and operator fields. The probe calls `snapshot()` 100 times at each history length and divides elapsed wall time by 100. It measures the view read path only, not operator-command writes, network responses, or competing traffic.
+
+| Decision events | Mean `snapshot()` time |
+| ---: | ---: |
+| 0 | 0.033 ms |
+| 200 | 0.433 ms |
+| 1,000 | 1.884 ms |
+| 5,000 | 11.025 ms |
+
+The current reader scans the decision history to validate scope and reconstruct the latest action per position. These samples are consistent with that linear work; one run does not establish a latency curve or safe history limit. The fixture pending event bypasses delivery authentication, and direct insertion bypasses the operator command. This probe says nothing about decision-write throughput or whether an operator correctly classified an incident. A future sizing claim needs a two-process workload with realistic decision retention, concurrent reads, latency distributions, and a target SLO. No failure-history size or read-latency bound is certified.

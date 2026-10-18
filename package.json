@@ -54,6 +54,7 @@
     "demo": "npm run build && node reference/quickstart.mjs",
     "measure:reference": "npm run build && node reference/measure.mjs",
     "measure:service": "npm run build && node reference/quickstart.mjs --load",
+    "measure:failure-history": "npm run build && node reference/measure-failure-history.mjs",
     "test": "npm run build && vitest run",
     "test:package": "npm run build && node scripts/check-package.mjs",
     "changeset": "changeset",

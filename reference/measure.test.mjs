@@ -21,3 +21,19 @@ test("reference measurement exercises committed, verified, and applied facts", (
   });
   assert.notEqual(invalid.status, 0);
 });
+
+test("failure-history measurement exercises increasing audit sizes", () => {
+  const reports = execFileSync(process.execPath, ["reference/measure-failure-history.mjs"], {
+    cwd: process.cwd(),
+    encoding: "utf8",
+    timeout: 20_000,
+  })
+    .trim()
+    .split("\n")
+    .map((line) => JSON.parse(line));
+  assert.deepEqual(
+    reports.map((report) => report.events),
+    [0, 200, 1000, 5000],
+  );
+  for (const report of reports) assert.ok(report.meanSnapshotMs > 0);
+});
