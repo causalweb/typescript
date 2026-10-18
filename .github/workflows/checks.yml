@@ -47,7 +47,7 @@ jobs:
       - run: node .conformance/runner.mjs --spec .spec --profile http-transport-server-v1 -- node scripts/transport-conformance-server.mjs
       - run: npm audit --audit-level=high
       - run: npm run test:package
-      - run: npm run changeset:status
+      - run: npm run changeset:status -- --since ${{ github.event.pull_request.base.sha || github.sha }}
       - run: npm run release:check
       - if: github.event_name == 'pull_request'
         run: npm run release:check
