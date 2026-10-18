@@ -131,6 +131,15 @@ try {
     env: environment,
     stdio: "inherit",
   });
+  const installedClient = join(consumer, "order-client.mjs");
+  copyFileSync(join(root, "reference", "client.mjs"), installedClient);
+  execFileSync(process.execPath, [join(root, "reference", "quickstart.mjs")], {
+    cwd: root,
+    env: { ...environment, CAUSALWEB_QUICKSTART_CLIENT_SCRIPT: installedClient },
+    stdio: "inherit",
+    timeout: 30_000,
+  });
+  console.log("Installed-package HTTPS client against persistent reference passed");
   if (previewRequested) {
     const archive = readFileSync(join(scratch, packed.filename));
     mkdirSync(preview);
