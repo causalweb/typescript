@@ -122,6 +122,8 @@ test("live HTTPS view reports only operator-recorded terminal failure", async (c
     CW_DOMAIN: "https://orders.example/domains/orders",
     CW_AUDIENCE: "https://view.example/causal",
     CW_SUBJECT: "tenant-a",
+    CW_VIEW_CONTRACT: "reference-orders/test-live-contract",
+    CW_VIEW_SCHEMA: "orders/test-live-contract",
     CW_KID: "key-1",
     CW_APP_TOKEN: "application-secret-for-tenant-a",
     CW_DELIVERY_TOKEN: "separate-delivery-secret",
@@ -258,7 +260,10 @@ test("invalid protocol identity does not bind an empty database", async (context
         CW_DATABASE: join(directory, "view.sqlite"),
         CW_VERIFY_KEYRING_FILE: keyring,
       },
-      invalid: [{ CW_DOMAIN: `${common.CW_DOMAIN}#fragment` }],
+      invalid: [
+        { CW_DOMAIN: `${common.CW_DOMAIN}#fragment` },
+        { CW_VIEW_CONTRACT: "reference-orders/test-unpaired" },
+      ],
       port: viewPort,
     },
   ];
@@ -1084,16 +1089,20 @@ test("configured HTTPS services recover delivery and confirm only the committed 
   });
   assert.ok(held.undelivered().some((event) => event.order === "rejected-delivery"));
   held.close();
-  source = start(
-    { ...sourceEnvironment, CW_KID: "key-2", CW_SIGNING_KEY_FILE: rotatedSigningKey },
-    sourcePort,
-  );
-  await source.ready;
   const [blockedEvidence] = parseContext([blocked.headers["causal-context"]]);
   const recoveredHeaders = {
     ...Object.fromEntries(requestHeaders([blockedEvidence])),
     authorization: `Bearer ${rotatedAppToken}`,
   };
+  const notTerminal = await exchange(viewPort, certificate, "/orders", "GET", recoveredHeaders);
+  assert.equal(notTerminal.status, 412);
+  assert.equal(notTerminal.headers["causal-result"], "unsatisfied");
+  assert.equal(JSON.parse(notTerminal.body).outcomes[0].outcome, "unsatisfied");
+  source = start(
+    { ...sourceEnvironment, CW_KID: "key-2", CW_SIGNING_KEY_FILE: rotatedSigningKey },
+    sourcePort,
+  );
+  await source.ready;
   let accepted;
   for (let attempt = 0; attempt < 30; attempt += 1) {
     accepted = await exchange(viewPort, certificate, "/orders", "GET", recoveredHeaders);

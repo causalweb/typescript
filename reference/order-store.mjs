@@ -21,7 +21,7 @@ function sameEvent(row, event) {
   return row.event_id === event.id && row.order_value === event.order;
 }
 
-function bindIdentity(database, role, identity) {
+function bindIdentity(database, role, identity, viewContract) {
   if (
     !identity ||
     ["issuer", "domain", "audience", "subject"].some(
@@ -31,18 +31,24 @@ function bindIdentity(database, role, identity) {
     throw new Error("database identity is required");
   database.exec("BEGIN IMMEDIATE");
   try {
-    const schemaVersion = 2;
+    const schemaVersion = role === "view" ? 3 : 2;
     const existing = database
       .prepare(
         "SELECT name FROM sqlite_master WHERE type = 'table' AND name = 'reference_identity'",
       )
       .get();
+    const contractExists =
+      role === "view" &&
+      database
+        .prepare("SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'view_contract'")
+        .get() !== undefined;
     const hasHistory =
       role === "source"
         ? database.prepare("SELECT 1 FROM source_orders LIMIT 1").get() !== undefined ||
           database.prepare("SELECT next_position FROM source_state WHERE id = 1").get()
             ?.next_position !== "1"
-        : database.prepare("SELECT 1 FROM view_orders LIMIT 1").get() !== undefined ||
+        : contractExists ||
+          database.prepare("SELECT 1 FROM view_orders LIMIT 1").get() !== undefined ||
           database.prepare("SELECT 1 FROM view_pending LIMIT 1").get() !== undefined ||
           database.prepare("SELECT frontier FROM view_state WHERE id = 1").get()?.frontier !== null;
     if (!existing) {
@@ -50,7 +56,7 @@ function bindIdentity(database, role, identity) {
       database.exec(`
         CREATE TABLE reference_identity (
           id INTEGER PRIMARY KEY CHECK (id = 1),
-          version INTEGER NOT NULL CHECK (version IN (1, 2)),
+          version INTEGER NOT NULL CHECK (version IN (1, 2, 3)),
           role TEXT NOT NULL,
           issuer TEXT NOT NULL,
           domain TEXT NOT NULL,
@@ -75,7 +81,9 @@ function bindIdentity(database, role, identity) {
           identity.subject,
         );
     } else if (
-      (bound.version !== schemaVersion && bound.version !== 1) ||
+      (bound.version !== schemaVersion &&
+        bound.version !== 1 &&
+        !(role === "view" && bound.version === 2)) ||
       bound.role !== role ||
       ["issuer", "domain", "audience", "subject"].some((field) => bound[field] !== identity[field])
     )
@@ -100,7 +108,7 @@ function bindIdentity(database, role, identity) {
             "SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'view_failure_events'",
           )
           .get() !== undefined;
-      if (bound?.version === 2 && !decisionsExist)
+      if (bound?.version >= 2 && !decisionsExist)
         throw new Error("view failure history is missing");
       if (bound?.version === 1 && decisionsExist)
         throw new Error("view failure history predates schema upgrade");
@@ -115,12 +123,37 @@ function bindIdentity(database, role, identity) {
           recorded_at TEXT NOT NULL
         );
       `);
+      if (bound?.version === 3) {
+        if (!contractExists) throw new Error("view contract binding is missing");
+        const stored = database
+          .prepare("SELECT contract, schema FROM view_contract WHERE id = 1")
+          .get();
+        if (stored?.contract !== viewContract.contract || stored.schema !== viewContract.schema)
+          throw new Error("view contract does not match configuration");
+      } else {
+        if (contractExists) throw new Error("view contract binding predates schema upgrade");
+        if (
+          bound &&
+          (viewContract.contract !== ORDER_CONTRACT || viewContract.schema !== ORDER_SCHEMA)
+        )
+          throw new Error("legacy view requires its original contract");
+        database.exec(`
+          CREATE TABLE view_contract (
+            id INTEGER PRIMARY KEY CHECK (id = 1),
+            contract TEXT NOT NULL,
+            schema TEXT NOT NULL
+          );
+        `);
+        database
+          .prepare("INSERT INTO view_contract (id, contract, schema) VALUES (1, ?, ?)")
+          .run(viewContract.contract, viewContract.schema);
+      }
     }
-    if (bound?.version === 1)
+    if (bound && bound.version !== schemaVersion)
       database.exec(`
           CREATE TABLE reference_identity_next (
             id INTEGER PRIMARY KEY CHECK (id = 1),
-            version INTEGER NOT NULL CHECK (version IN (1, 2)),
+            version INTEGER NOT NULL CHECK (version IN (1, 2, 3)),
             role TEXT NOT NULL,
             issuer TEXT NOT NULL,
             domain TEXT NOT NULL,
@@ -128,7 +161,7 @@ function bindIdentity(database, role, identity) {
             subject TEXT NOT NULL
           );
           INSERT INTO reference_identity_next
-            SELECT id, 2, role, issuer, domain, audience, subject FROM reference_identity;
+            SELECT id, ${schemaVersion}, role, issuer, domain, audience, subject FROM reference_identity;
           DROP TABLE reference_identity;
           ALTER TABLE reference_identity_next RENAME TO reference_identity;
         `);
@@ -187,7 +220,7 @@ function assertSourceLineage(database) {
     throw new Error("source lineage requires repair");
 }
 
-function latestFailureActions(database) {
+function latestFailureActions(database, contract, schema) {
   const actions = new Map();
   const rows = database.prepare(
     "SELECT position, contract, schema, action, operator FROM view_failure_events ORDER BY id",
@@ -195,8 +228,8 @@ function latestFailureActions(database) {
   for (const row of rows.iterate()) {
     canonicalPosition(row.position);
     if (
-      row.contract !== ORDER_CONTRACT ||
-      row.schema !== ORDER_SCHEMA ||
+      row.contract !== contract ||
+      row.schema !== schema ||
       (row.action !== "failed" && row.action !== "resolved") ||
       typeof row.operator !== "string" ||
       !row.operator
@@ -416,9 +449,26 @@ export class OrderSourceStore {
 export class OrderViewStore {
   #database;
   #faultPoint;
+  #contract;
+  #schema;
 
-  constructor(path, identity, faultPoint = () => {}) {
+  constructor(
+    path,
+    identity,
+    faultPoint = () => {},
+    viewContract = { contract: ORDER_CONTRACT, schema: ORDER_SCHEMA },
+  ) {
+    if (
+      !viewContract ||
+      typeof viewContract.contract !== "string" ||
+      !viewContract.contract ||
+      typeof viewContract.schema !== "string" ||
+      !viewContract.schema
+    )
+      throw new Error("view contract and schema are required");
     this.#faultPoint = faultPoint;
+    this.#contract = viewContract.contract;
+    this.#schema = viewContract.schema;
     this.#database = new DatabaseSync(path, { timeout: 2000 });
     try {
       this.#database.exec(`
@@ -446,7 +496,7 @@ export class OrderViewStore {
       );
       INSERT OR IGNORE INTO view_state (id, frontier) VALUES (1, NULL);
     `);
-      bindIdentity(this.#database, "view", identity);
+      bindIdentity(this.#database, "view", identity, viewContract);
     } catch (error) {
       this.#database.close();
       throw error;
@@ -536,7 +586,9 @@ export class OrderViewStore {
     try {
       const cut = readViewCut(this.#database, false);
       if (cut.frontier === "unknown") throw new Error("view lineage requires repair");
-      const latest = latestFailureActions(this.#database).get(selected);
+      const latest = latestFailureActions(this.#database, this.#contract, this.#schema).get(
+        selected,
+      );
       if (action === "failed") {
         const frontier = cut.frontier === null ? 0n : canonicalPosition(cut.frontier);
         if (BigInt(selected) <= frontier) throw new Error("position is already accounted for");
@@ -550,7 +602,7 @@ export class OrderViewStore {
           .prepare(
             "INSERT INTO view_failure_events (position, contract, schema, action, operator, recorded_at) VALUES (?, ?, ?, ?, ?, ?)",
           )
-          .run(selected, ORDER_CONTRACT, ORDER_SCHEMA, action, operator, new Date().toISOString());
+          .run(selected, this.#contract, this.#schema, action, operator, new Date().toISOString());
       this.#database.exec("COMMIT");
     } catch (error) {
       this.#database.exec("ROLLBACK");
@@ -567,7 +619,11 @@ export class OrderViewStore {
       if (cut.frontier !== "unknown") {
         const frontier = cut.frontier === null ? 0n : canonicalPosition(cut.frontier);
         try {
-          for (const [value, action] of latestFailureActions(this.#database)) {
+          for (const [value, action] of latestFailureActions(
+            this.#database,
+            this.#contract,
+            this.#schema,
+          )) {
             const failed = BigInt(value);
             if (action !== "failed" || failed <= frontier) continue;
             if (!this.#database.prepare("SELECT 1 FROM view_pending WHERE position = ?").get(value))

@@ -69,6 +69,17 @@ function protectedConfig() {
   const domain = setting("CW_DOMAIN");
   const audience = setting("CW_AUDIENCE");
   const subject = setting("CW_SUBJECT");
+  const viewContract = {
+    contract: process.env.CW_VIEW_CONTRACT ?? ORDER_CONTRACT,
+    schema: process.env.CW_VIEW_SCHEMA ?? ORDER_SCHEMA,
+  };
+  if (
+    role === "view" &&
+    (!viewContract.contract ||
+      !viewContract.schema ||
+      (process.env.CW_VIEW_CONTRACT === undefined) !== (process.env.CW_VIEW_SCHEMA === undefined))
+  )
+    throw new Error("CW_VIEW_CONTRACT and CW_VIEW_SCHEMA must be configured together");
   const kid = setting("CW_KID");
   const appToken = setting("CW_APP_TOKEN");
   const deliveryToken = setting("CW_DELIVERY_TOKEN");
@@ -105,6 +116,7 @@ function protectedConfig() {
     domain,
     audience,
     subject,
+    viewContract,
     kid,
     appToken,
     deliveryToken,
@@ -235,7 +247,7 @@ const verifier =
 const store =
   config.role === "source"
     ? new OrderSourceStore(config.database, identity, testFaultPoint)
-    : new OrderViewStore(config.database, identity, testFaultPoint);
+    : new OrderViewStore(config.database, identity, testFaultPoint, config.viewContract);
 
 function materialize(event) {
   if (!issuer) throw new Error("source issuer is unavailable");
@@ -321,8 +333,8 @@ function snapshot() {
       headers: new Headers({ "content-type": "application/json" }),
       body: Buffer.from(JSON.stringify({ orders: state.orders })),
     },
-    ORDER_CONTRACT,
-    ORDER_SCHEMA,
+    config.viewContract.contract,
+    config.viewContract.schema,
     new Map([
       [
         sourceKey(config.issuer, config.domain),

@@ -58,7 +58,7 @@ function inspectPair(sourcePath, viewPath) {
     if (
       (sourceIdentity?.version !== 1 && sourceIdentity?.version !== 2) ||
       sourceIdentity.role !== "source" ||
-      (viewIdentity?.version !== 1 && viewIdentity?.version !== 2) ||
+      (viewIdentity?.version !== 1 && viewIdentity?.version !== 2 && viewIdentity?.version !== 3) ||
       viewIdentity.role !== "view" ||
       ["issuer", "domain", "audience", "subject"].some(
         (field) => sourceIdentity[field] !== viewIdentity[field],
@@ -73,7 +73,7 @@ function inspectPair(sourcePath, viewPath) {
     )
       throw new Error("source request mapping is missing");
     if (
-      viewIdentity.version === 2 &&
+      viewIdentity.version >= 2 &&
       !view
         .prepare(
           "SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'view_failure_events'",
@@ -81,6 +81,12 @@ function inspectPair(sourcePath, viewPath) {
         .get()
     )
       throw new Error("view failure history is missing");
+    const contract =
+      viewIdentity.version === 3
+        ? view.prepare("SELECT contract, schema FROM view_contract WHERE id = 1").get()
+        : { contract: ORDER_CONTRACT, schema: ORDER_SCHEMA };
+    if (!contract?.contract || !contract.schema)
+      throw new Error("view contract binding is missing");
     let next = 1n;
     for (const row of source
       .prepare("SELECT position FROM source_orders ORDER BY length(position), position")
@@ -122,7 +128,7 @@ function inspectPair(sourcePath, viewPath) {
       if (!fact?.evidence || fact.event_id !== row.event_id || fact.order_value !== row.order_value)
         throw new Error("view pending fact disagrees with source");
     }
-    if (viewIdentity.version === 2) {
+    if (viewIdentity.version >= 2) {
       const latest = new Map();
       for (const row of view
         .prepare(
@@ -131,8 +137,8 @@ function inspectPair(sourcePath, viewPath) {
         .iterate()) {
         if (
           position(row.position) < 1n ||
-          row.contract !== ORDER_CONTRACT ||
-          row.schema !== ORDER_SCHEMA ||
+          row.contract !== contract.contract ||
+          row.schema !== contract.schema ||
           !["failed", "resolved"].includes(row.action) ||
           !row.operator
         )

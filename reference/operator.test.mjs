@@ -203,7 +203,117 @@ test("only a durable view-operator decision makes an uncovered dependency failed
   assert.throws(() => view.decideFailure("resolved", "2", "operator-a"), /requires repair/);
 });
 
-test("view version-one data upgrades atomically and version-two missing history fails closed", async (context) => {
+test("new view contract starts without decisions from the prior contract", async (context) => {
+  const directory = await mkdtemp(join(tmpdir(), "causalweb-reference-contract-rollover-"));
+  assert.equal(resolve(directory, ".."), resolve(tmpdir()));
+  context.onTestFinished(async () => {
+    await rm(directory, { recursive: true });
+  });
+  const oldPath = join(directory, "old-view.sqlite");
+  const newPath = join(directory, "new-view.sqlite");
+  const event = {
+    id: "urn:uuid:00000000-0000-4000-8000-000000000002",
+    position: "2",
+    order: "second",
+    issuedAt: "1000",
+    expiresAt: "4600",
+    evidence: "signed-test-evidence",
+  };
+  const { privateKey, publicKey } = generateKeyPairSync("ec", { namedCurve: "prime256v1" });
+  const token = new Issuer(
+    IDENTITY.issuer,
+    "key-1",
+    privateKey,
+    new Set([IDENTITY.domain]),
+    3600n,
+  ).issueCommitted(
+    {
+      subject: IDENTITY.subject,
+      audiences: [IDENTITY.audience],
+      domain: IDENTITY.domain,
+      position: 2n,
+      issuedAt: NOW,
+      expiresAt: NOW + 3600n,
+    },
+    NOW,
+  );
+  const verified = new Verifier(IDENTITY.audience, [
+    {
+      issuer: IDENTITY.issuer,
+      keys: new Map([["key-1", publicKey]]),
+      domains: new Set([IDENTITY.domain]),
+      maxLifetimeSeconds: 3600n,
+      clockSkewSeconds: 0n,
+    },
+  ]).verify(token, IDENTITY.subject, NOW);
+  const evaluate = (view, contract) => {
+    const state = view.snapshot();
+    return new Snapshot(
+      "/orders",
+      null,
+      contract.contract,
+      contract.schema,
+      new Map([
+        [
+          sourceKey(IDENTITY.issuer, IDENTITY.domain),
+          {
+            kind: "relevant",
+            frontiers: [state.frontier === null ? null : BigInt(state.frontier)],
+            progressPossible: true,
+            ...(state.firstTerminalFailure === undefined
+              ? {}
+              : { firstTerminalFailure: BigInt(state.firstTerminalFailure) }),
+          },
+        ],
+      ]),
+    ).evaluate(verified, NOW).outcome;
+  };
+  const oldView = new OrderViewStore(oldPath, IDENTITY);
+  oldView.accept(event);
+  oldView.decideFailure("failed", "2", "operator-a");
+  assert.equal(evaluate(oldView, { contract: ORDER_CONTRACT, schema: ORDER_SCHEMA }), "failed");
+  oldView.close();
+
+  const nextContract = {
+    contract: "reference-orders/test-rollover",
+    schema: "orders/test-rollover",
+  };
+  let newView = new OrderViewStore(newPath, IDENTITY, () => {}, nextContract);
+  newView.accept(event);
+  assert.equal(evaluate(newView, nextContract), "unsatisfied");
+  assert.throws(
+    () => new OrderViewStore(newPath, IDENTITY),
+    /view contract does not match configuration/,
+  );
+  assert.throws(
+    () => new OrderViewStore(oldPath, IDENTITY, () => {}, nextContract),
+    /view contract does not match configuration/,
+  );
+  newView.close();
+  newView = new OrderViewStore(newPath, IDENTITY, () => {}, nextContract);
+  assert.equal(evaluate(newView, nextContract), "unsatisfied");
+  newView.close();
+  recordFailureDecision("mark-failed", "2", {
+    CW_ROLE: "view",
+    CW_DATABASE: newPath,
+    CW_ISSUER: IDENTITY.issuer,
+    CW_DOMAIN: IDENTITY.domain,
+    CW_AUDIENCE: IDENTITY.audience,
+    CW_SUBJECT: IDENTITY.subject,
+    CW_VIEW_CONTRACT: nextContract.contract,
+    CW_VIEW_SCHEMA: nextContract.schema,
+  });
+  newView = new OrderViewStore(newPath, IDENTITY, () => {}, nextContract);
+  assert.equal(evaluate(newView, nextContract), "failed");
+  newView.close();
+  const audit = new DatabaseSync(newPath, { readOnly: true });
+  const recorded = audit.prepare("SELECT contract, schema FROM view_failure_events").get();
+  audit.close();
+  assert.equal(recorded.contract, nextContract.contract);
+  assert.equal(recorded.schema, nextContract.schema);
+});
+
+test("view version-one data upgrades atomically and version-three missing history fails closed", async (context) => {
   const directory = await mkdtemp(join(tmpdir(), "causalweb-reference-view-upgrade-"));
   assert.equal(resolve(directory, ".."), resolve(tmpdir()));
   context.onTestFinished(async () => {
@@ -221,7 +331,7 @@ test("view version-one data upgrades atomically and version-two missing history 
   });
   view.close();
   const legacy = new DatabaseSync(path);
-  legacy.exec("DROP TABLE view_failure_events");
+  legacy.exec("DROP TABLE view_failure_events; DROP TABLE view_contract");
   legacy.prepare("UPDATE reference_identity SET version = 1 WHERE id = 1").run();
   legacy.close();
   const upgraded = new OrderViewStore(path, IDENTITY);
@@ -231,9 +341,59 @@ test("view version-one data upgrades atomically and version-two missing history 
   const persisted = new DatabaseSync(path);
   assert.equal(
     persisted.prepare("SELECT version FROM reference_identity WHERE id = 1").get().version,
-    2,
+    3,
   );
   persisted.exec("DROP TABLE view_failure_events");
   persisted.close();
   assert.throws(() => new OrderViewStore(path, IDENTITY), /view failure history is missing/);
+});
+
+test("legacy view decisions migrate under their original contract only", async (context) => {
+  const directory = await mkdtemp(join(tmpdir(), "causalweb-reference-contract-upgrade-"));
+  assert.equal(resolve(directory, ".."), resolve(tmpdir()));
+  context.onTestFinished(async () => {
+    await rm(directory, { recursive: true });
+  });
+  const path = join(directory, "view.sqlite");
+  const view = new OrderViewStore(path, IDENTITY);
+  view.accept({
+    id: "urn:uuid:00000000-0000-4000-8000-000000000002",
+    position: "2",
+    order: "second",
+    issuedAt: "1000",
+    expiresAt: "4600",
+    evidence: "signed-test-evidence",
+  });
+  view.decideFailure("failed", "2", "operator-a");
+  view.close();
+  const legacy = new DatabaseSync(path);
+  legacy.exec("DROP TABLE view_contract");
+  legacy.prepare("UPDATE reference_identity SET version = 2 WHERE id = 1").run();
+  legacy.close();
+  assert.throws(
+    () =>
+      new OrderViewStore(path, IDENTITY, () => {}, {
+        contract: "reference-orders/test-rollover",
+        schema: "orders/test-rollover",
+      }),
+    /legacy view requires its original contract/,
+  );
+  const upgraded = new OrderViewStore(path, IDENTITY);
+  assert.equal(upgraded.snapshot().firstTerminalFailure, "2");
+  upgraded.close();
+  const persisted = new DatabaseSync(path, { readOnly: true });
+  const version = persisted
+    .prepare("SELECT version FROM reference_identity WHERE id = 1")
+    .get().version;
+  const contract = persisted
+    .prepare("SELECT contract, schema FROM view_contract WHERE id = 1")
+    .get();
+  persisted.close();
+  assert.equal(version, 3);
+  assert.equal(contract.contract, ORDER_CONTRACT);
+  assert.equal(contract.schema, ORDER_SCHEMA);
+  const missing = new DatabaseSync(path);
+  missing.exec("DROP TABLE view_contract");
+  missing.close();
+  assert.throws(() => new OrderViewStore(path, IDENTITY), /view contract binding is missing/);
 });

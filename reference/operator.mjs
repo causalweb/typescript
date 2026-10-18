@@ -2,7 +2,7 @@ import { userInfo } from "node:os";
 import { resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
-import { OrderViewStore } from "./order-store.mjs";
+import { ORDER_CONTRACT, ORDER_SCHEMA, OrderViewStore } from "./order-store.mjs";
 
 export function recordFailureDecision(action, value, settings = process.env) {
   if (action !== "mark-failed" && action !== "resolve-failed")
@@ -18,7 +18,17 @@ export function recordFailureDecision(action, value, settings = process.env) {
   );
   const database = settings.CW_DATABASE;
   if (!database) throw new Error("CW_DATABASE is required");
-  const store = new OrderViewStore(database, identity);
+  const viewContract = {
+    contract: settings.CW_VIEW_CONTRACT ?? ORDER_CONTRACT,
+    schema: settings.CW_VIEW_SCHEMA ?? ORDER_SCHEMA,
+  };
+  if (
+    !viewContract.contract ||
+    !viewContract.schema ||
+    (settings.CW_VIEW_CONTRACT === undefined) !== (settings.CW_VIEW_SCHEMA === undefined)
+  )
+    throw new Error("CW_VIEW_CONTRACT and CW_VIEW_SCHEMA must be configured together");
+  const store = new OrderViewStore(database, identity, () => {}, viewContract);
   try {
     store.decideFailure(
       action === "mark-failed" ? "failed" : "resolved",
