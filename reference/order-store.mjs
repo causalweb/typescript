@@ -142,6 +142,26 @@ function readViewCut(database, includeOrders) {
   return { frontier: intact ? state.frontier : "unknown", rows };
 }
 
+function assertSourceLineage(database) {
+  let expected = 1n;
+  const rows = database.prepare(
+    "SELECT position FROM source_orders ORDER BY length(position), position",
+  );
+  for (const row of rows.iterate()) {
+    let actual;
+    try {
+      actual = canonicalPosition(row.position);
+    } catch {
+      throw new Error("source lineage requires repair");
+    }
+    if (actual !== expected) throw new Error("source lineage requires repair");
+    expected += 1n;
+  }
+  const state = database.prepare("SELECT next_position FROM source_state WHERE id = 1").get();
+  if (state?.next_position !== expected.toString())
+    throw new Error("source lineage requires repair");
+}
+
 export class OrderSourceStore {
   #database;
 
@@ -168,6 +188,7 @@ export class OrderSourceStore {
       INSERT OR IGNORE INTO source_state (id, next_position) VALUES (1, '1');
     `);
       bindIdentity(this.#database, "source", identity);
+      assertSourceLineage(this.#database);
     } catch (error) {
       this.#database.close();
       throw error;

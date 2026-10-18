@@ -98,6 +98,32 @@ test("source refuses to reconstruct a missing version-two request map", async (c
   assert.throws(() => new OrderSourceStore(path, IDENTITY), /request mapping is missing/);
 });
 
+test("source refuses damaged position lineage before issuing another fact", async (context) => {
+  const directory = await mkdtemp(join(tmpdir(), "causalweb-reference-source-lineage-"));
+  assert.equal(resolve(directory, ".."), resolve(tmpdir()));
+  context.onTestFinished(async () => {
+    await rm(directory, { recursive: true });
+  });
+  const changes = [
+    [
+      "gap",
+      "DELETE FROM source_requests WHERE position = '2'; DELETE FROM source_orders WHERE position = '2'",
+    ],
+    ["rewind", "UPDATE source_state SET next_position = '2' WHERE id = 1"],
+    ["advance", "UPDATE source_state SET next_position = '5' WHERE id = 1"],
+  ];
+  for (const [name, sql] of changes) {
+    const path = join(directory, `${name}.sqlite`);
+    const source = new OrderSourceStore(path, IDENTITY);
+    for (const order of ["first", "second", "third"]) source.commit(order, NOW, NOW + 3600n, order);
+    source.close();
+    const damaged = new DatabaseSync(path);
+    damaged.exec(sql);
+    damaged.close();
+    assert.throws(() => new OrderSourceStore(path, IDENTITY), /source lineage requires repair/);
+  }
+});
+
 test("source commitment and view snapshot survive restart without a frontier ahead of state", async (context) => {
   const directory = await mkdtemp(join(tmpdir(), "causalweb-reference-store-"));
   assert.equal(resolve(directory, ".."), resolve(tmpdir()));
