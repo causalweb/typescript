@@ -27,7 +27,7 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           repository: causalweb/spec
-          ref: 56d3de580bd46726372e544cdc3214cb99142647
+          ref: b5a216510708553f7ac763d02ec12755df78d7f1
           path: .spec-proposal
           persist-credentials: false
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1

@@ -25,7 +25,7 @@ for (const name of [
 }
 console.log("four fixture files match the exact specification commit");
 if (proposalSpec) {
-  const proposalRevision = "56d3de580bd46726372e544cdc3214cb99142647";
+  const proposalRevision = "b5a216510708553f7ac763d02ec12755df78d7f1";
   const proposal = execFileSync("git", [
     "-C",
     proposalSpec,
