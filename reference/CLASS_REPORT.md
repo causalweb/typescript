@@ -42,6 +42,7 @@ No class above is promoted by the historical 85 selected runner cases, the addit
 
 ## Crash and deviation register
 
+- **Operator HTTP boundary:** The live HTTPS reference test sends both application and delivery bearer credentials to attempted failure-record and resolution routes, then sends a correctly signed delivery envelope containing source-side failure metadata. The first attempts receive marker-free `404`, the extra-field delivery receives marker-free `400`, and the failure audit count and authorized observation remain unchanged. This proves only the current reference route boundary; it does not prove filesystem permissions, separate OS principals, or resistance to a process that can write the view database directly.
 - **Issuer boundary:** a service test kills inside the source transaction after the fact insert and verifies rollback of fact, sequence, and request-key map; it then kills immediately after a committed retry, before evidence issuance, and verifies blank-row recovery. Another test kills after evidence was observable. These are process crashes, not device or power failures.
 - **Verifier boundary:** the reference service is killed after projection-row write but before frontier update, then after atomic commit but before delivery acknowledgement. SQLite rolls the first transaction back and retains both state and frontier in the second. This does not prove storage behavior under power loss.
 - **Lineage loss:** a deliberately noncontiguous applied row yields `unknown`; this is a logical corruption test, not a filesystem fault campaign.

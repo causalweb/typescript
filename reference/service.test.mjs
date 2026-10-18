@@ -190,8 +190,37 @@ test("live HTTPS view reports only operator-recorded terminal failure", async (c
       ...Object.fromEntries(requestHeaders([item.evidence])),
       ...(authenticated ? { authorization: `Bearer ${settings.CW_APP_TOKEN}` } : {}),
     });
+  const auditCount = () => {
+    const database = new DatabaseSync(settings.CW_DATABASE, { readOnly: true });
+    try {
+      return database.prepare("SELECT COUNT(*) AS count FROM view_failure_events").get().count;
+    } finally {
+      database.close();
+    }
+  };
+  const operatorRouteAttempt = (action, token) =>
+    exchange(port, certificate, `/operator/${action}/2`, "POST", {
+      authorization: `Bearer ${token}`,
+    });
+  assert.equal((await read(second)).status, 412);
+  for (const token of [settings.CW_APP_TOKEN, settings.CW_DELIVERY_TOKEN]) {
+    const attempt = await operatorRouteAttempt("mark-failed", token);
+    assert.equal(attempt.status, 404);
+    assert.equal(attempt.headers["causal-result"], undefined);
+  }
+  const sourceClaim = await deliver({ ...second, sourceReportedFailure: true });
+  assert.equal(sourceClaim.status, 400);
+  assert.equal(sourceClaim.headers["causal-result"], undefined);
+  assert.equal(auditCount(), 0);
   assert.equal((await read(second)).status, 412);
   recordFailureDecision("mark-failed", "2", settings);
+  assert.equal(auditCount(), 1);
+  for (const token of [settings.CW_APP_TOKEN, settings.CW_DELIVERY_TOKEN]) {
+    const attempt = await operatorRouteAttempt("resolve-failed", token);
+    assert.equal(attempt.status, 404);
+    assert.equal(attempt.headers["causal-result"], undefined);
+  }
+  assert.equal(auditCount(), 1);
   const failed = await read(second);
   assert.equal(failed.status, 503);
   assert.equal(failed.headers["causal-result"], "unsatisfied");
