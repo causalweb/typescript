@@ -1,8 +1,8 @@
 import assert from "node:assert/strict";
 import { execFileSync } from "node:child_process";
-import { cpSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { cpSync, existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { dirname, join, resolve } from "node:path";
+import { dirname, join, posix, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), "..");
@@ -26,19 +26,27 @@ try {
   const [packed] = JSON.parse(
     npm(["pack", "--json", "--ignore-scripts", "--pack-destination", scratch], root, true),
   );
-  for (const required of [
+  const requiredFiles = [
     "dist/src/index.js",
     "dist/src/index.d.ts",
+    "dist/src/client.js",
+    "dist/src/client.d.ts",
     "dist/src/node-http.js",
     "dist/src/node-http.d.ts",
     "dist/src/fastify.js",
     "dist/src/fastify.d.ts",
     "CROSS_RUNTIME_DEMO.md",
     "MIGRATION.md",
+    "PILOT.md",
     "PERSISTENT_DEMO.md",
+    "RELEASING.md",
+    "RUST_REVISION",
+    "CONFORMANCE_REVISION",
+    "security/npm-audit-2026-10-18.json",
     "CHANGELOG.md",
     "LICENSE.md",
-  ])
+  ];
+  for (const required of requiredFiles)
     assert.ok(
       packed.files.some((file) => file.path === required),
       `missing package artifact: ${required}`,
@@ -65,6 +73,22 @@ try {
     }),
   );
   npm(["install", "--ignore-scripts", "--no-audit", "--no-fund"], consumer);
+  const installed = join(consumer, "node_modules", manifest.name);
+  for (const required of requiredFiles)
+    assert.ok(existsSync(join(installed, required)), `missing installed artifact: ${required}`);
+  const packagedPaths = new Set(packed.files.map((file) => file.path));
+  for (const file of packed.files.filter((item) => item.path.endsWith(".md"))) {
+    const markdown = readFileSync(join(installed, file.path), "utf8");
+    for (const [, link] of markdown.matchAll(/\]\(([^)]+)\)/g)) {
+      if (/^(?:#|[A-Za-z][A-Za-z0-9+.-]*:)/.test(link)) continue;
+      const target = link.split("#", 1)[0];
+      const packagePath = posix.normalize(posix.join(posix.dirname(file.path), target));
+      assert.ok(
+        packagedPaths.has(packagePath) && existsSync(join(installed, packagePath)),
+        `broken package link: ${file.path} -> ${link}`,
+      );
+    }
+  }
   execFileSync(
     process.execPath,
     [join(consumer, "node_modules", "typescript", "bin", "tsc"), "--project", "tsconfig.json"],
@@ -76,6 +100,16 @@ try {
     stdio: "inherit",
   });
   execFileSync(process.execPath, [join(consumer, "dist", "fastify.js")], {
+    cwd: consumer,
+    env: environment,
+    stdio: "inherit",
+  });
+  execFileSync(process.execPath, [join(consumer, "dist", "client.js")], {
+    cwd: consumer,
+    env: environment,
+    stdio: "inherit",
+  });
+  execFileSync(process.execPath, [join(consumer, "dist", "integration.js")], {
     cwd: consumer,
     env: environment,
     stdio: "inherit",

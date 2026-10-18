@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { generateKeyPairSync } from "node:crypto";
-import { test } from "node:test";
+import { test } from "vitest";
 import {
   DEFAULT_LIMITS,
   Issuer,
@@ -24,7 +24,7 @@ test("positions and URIs reject control and Unicode line terminators", () => {
 test("generic URIs preserve identifiers and do not repair invalid syntax", () => {
   for (const uri of [
     "urn:test:opaque",
-    "HTTPS://EXAMPLE.COM/a%2Fb?x=y#z",
+    "HTTPS://EXAMPLE.COM/a%2Fb?x=y%23z",
     "https://[::1]/path",
     "https://[v1.host]/",
     "scheme:",
@@ -39,9 +39,49 @@ test("generic URIs preserve identifiers and do not repair invalid syntax", () =>
     "https://[bad-ip]/",
     "https://host:bad/",
     "https://host/#a#b",
+    "https://host/#fragment",
+    "https://host/#",
+    "urn:test:a#fragment",
     "https://host/é",
   ])
     assert.equal(absoluteUri(uri), false, uri);
+});
+
+test("fragment-free URI syntax applies to issuer and configured identities", () => {
+  const { publicKey, privateKey } = generateKeyPairSync("ec", { namedCurve: "prime256v1" });
+  assert.equal(absoluteUri("urn:test:a%23fragment"), true);
+  assert.equal(httpsIssuer("HTTPS://ISSUER.EXAMPLE/a%23part"), true);
+  for (const issuer of ["https://issuer.example/#", "https://issuer.example/#fragment"]) {
+    assert.equal(httpsIssuer(issuer), false);
+    assert.throws(
+      () =>
+        new Verifier("audience", [
+          {
+            issuer,
+            keys: new Map([["test", publicKey]]),
+            domains: new Set(["urn:test:domain"]),
+            maxLifetimeSeconds: 1000n,
+            clockSkewSeconds: 0n,
+          },
+        ]),
+      { code: "invalid-configuration" },
+    );
+    assert.throws(
+      () => new Issuer(issuer, "test", privateKey, new Set(["urn:test:domain"]), 1000n),
+      { code: "invalid-configuration" },
+    );
+  }
+  assert.throws(
+    () =>
+      new Issuer(
+        "https://issuer.example",
+        "test",
+        privateKey,
+        new Set(["urn:test:domain#"]),
+        1000n,
+      ),
+    { code: "invalid-configuration" },
+  );
 });
 
 test("required limits cannot be omitted by JavaScript callers", () => {

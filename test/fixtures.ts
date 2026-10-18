@@ -68,11 +68,13 @@ interface HttpFixtures {
 interface FixtureFiles {
   "jws-evidence.json": EvidenceFixtures;
   "evidence-validation.json": EvidenceFixtures;
+  "uri-identities.json": EvidenceFixtures;
   "prefix-evaluation.json": PrefixFixtures;
   "http-outcomes.json": HttpFixtures;
 }
 
-// These types describe pinned, repository-owned metadata, not validated wire input.
+// These types describe repository-owned metadata, including an unpinned draft URI fixture,
+// not validated wire input.
 // The implementation under test must still validate every evidence byte.
 export function fixture<Name extends keyof FixtureFiles>(name: Name): FixtureFiles[Name] {
   return JSON.parse(readFileSync(`test/vectors/${name}`, "utf8")) as FixtureFiles[Name];

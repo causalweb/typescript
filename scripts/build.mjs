@@ -18,3 +18,13 @@ execFileSync(
   ],
   { cwd: root, stdio: "inherit" },
 );
+// tsc checks types and compiles decorator-based tests; tsdown emits the published SDK.
+execFileSync(
+  process.execPath,
+  [
+    join(root, "node_modules", "tsdown", "dist", "run.mjs"),
+    "--config",
+    join(root, "tsdown.config.json"),
+  ],
+  { cwd: root, stdio: "inherit" },
+);

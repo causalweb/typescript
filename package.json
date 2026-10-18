@@ -17,6 +17,10 @@
       "types": "./dist/src/index.d.ts",
       "import": "./dist/src/index.js"
     },
+    "./client": {
+      "types": "./dist/src/client.d.ts",
+      "import": "./dist/src/client.js"
+    },
     "./fastify": {
       "types": "./dist/src/fastify.d.ts",
       "import": "./dist/src/fastify.js"
@@ -27,14 +31,19 @@
     "README.md",
     "CHANGELOG.md",
     "MIGRATION.md",
+    "PILOT.md",
     "CROSS_RUNTIME_DEMO.md",
     "PERSISTENT_DEMO.md",
     "SQLITE_DEMO.md",
     "CONFORMANCE.md",
+    "RELEASING.md",
     "SECURITY.md",
+    "security/npm-audit-2026-10-18.json",
     "LICENSE.md",
     "LICENSES/",
-    "SPEC_REVISION"
+    "SPEC_REVISION",
+    "RUST_REVISION",
+    "CONFORMANCE_REVISION"
   ],
   "scripts": {
     "format": "biome format --write .",
@@ -42,7 +51,10 @@
     "lint": "biome lint --error-on-warnings .",
     "check": "biome ci --error-on-warnings .",
     "build": "node scripts/build.mjs",
-    "test": "npm run build && node --test dist/test/*.test.js",
+    "demo": "npm run build && node reference/quickstart.mjs",
+    "measure:reference": "npm run build && node reference/measure.mjs",
+    "measure:service": "npm run build && node reference/quickstart.mjs --load",
+    "test": "npm run build && vitest run",
     "test:package": "npm run build && node scripts/check-package.mjs",
     "changeset": "changeset",
     "changeset:status": "changeset status",
@@ -64,7 +76,9 @@
     "fastify": "5.12.7",
     "reflect-metadata": "0.2.2",
     "rxjs": "7.8.2",
-    "typescript": "7.0.2"
+    "tsdown": "0.23.1",
+    "typescript": "7.0.2",
+    "vitest": "5.0.5"
   },
   "peerDependencies": {
     "fastify": "^5.0.0"

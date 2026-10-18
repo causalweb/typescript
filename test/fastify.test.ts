@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { generateKeyPairSync } from "node:crypto";
-import { test } from "node:test";
 import fastify from "fastify";
+import { test } from "vitest";
 import { handleFastifyObservation } from "../src/fastify.js";
 import {
   fetchObservation,
@@ -70,7 +70,7 @@ test("the Fastify adapter keeps ordinary routing and handles constrained observa
       return reply;
     return reply.code(200).send({ state: "ordinary" });
   });
-  t.after(async () => {
+  t.onTestFinished(async () => {
     await app.close();
   });
   const address = await app.listen({ host: "127.0.0.1", port: 0 });

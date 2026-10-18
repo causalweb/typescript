@@ -2,7 +2,7 @@
 
 No npm package or GitHub release has been published. `private: true` prevents accidental registry publication. The configured package name is not a claim of registry ownership or availability.
 
-New release notes use [Changesets](.changeset/README.md). Prepare versions on a review branch with `npm run version:prepare`; it generates experimental version/changelog updates and refreshes npm lock metadata. Run `npm run release:check` and `npm run test:release` before review. These commands do not publish or tag. Stable-exit intent and enabling publication require a separate reviewed policy/approval change; they are not routine version preparation.
+New release notes use Changesets, configured in the source checkout's `.changeset/` directory. Prepare versions on a review branch with `npm run version:prepare`; it generates experimental version/changelog updates and refreshes npm lock metadata. Run `npm run release:check` and `npm run test:release` before review. These commands do not publish or tag. Stable-exit intent and enabling publication require a separate reviewed policy/approval change; they are not routine version preparation.
 
 Before a source preview or package release:
 

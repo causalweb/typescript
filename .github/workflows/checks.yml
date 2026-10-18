@@ -37,6 +37,7 @@ jobs:
       - run: npm ci --prefix .conformance --ignore-scripts
       - run: npm run check
       - run: npm test
+      - run: npm run demo
       - run: node scripts/check-spec.mjs .spec
       - run: node .conformance/runner.mjs --spec .spec -- node scripts/conformance-adapter.mjs
       - run: node .conformance/runner.mjs --spec .spec --profile prefix-evaluation-v1 -- node scripts/conformance-adapter.mjs

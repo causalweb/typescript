@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { generateKeyPairSync } from "node:crypto";
 import { createServer, type Server } from "node:http";
 import { connect } from "node:net";
-import { test } from "node:test";
+import { test } from "vitest";
 import {
   fetchObservation,
   handleNodeObservation,
@@ -114,7 +114,7 @@ test("the Node bridge preserves duplicate causal fields and safely owns causal r
         response.end();
       });
   });
-  t.after(() => {
+  t.onTestFinished(() => {
     server.closeAllConnections();
     server.close();
   });

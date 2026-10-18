@@ -1,0 +1,50 @@
+# Order reference conformance evidence matrix
+
+Status: local, uncommitted engineering report; **no deployment conformance class is claimed**. This report evaluates the [order reference](README.md) against [specification §8](https://github.com/causalweb/spec/blob/9ba475c17afa48ab02c50ed48991ea435eff10a0/spec/07-conformance.md). It separates the TypeScript SDK's selected conformance profiles from the reference application's storage, authorization, and recovery obligations. A passing SDK adapter cannot certify the application that calls it.
+
+## Identity and policy
+
+- SDK package: `@causalweb/protocol` `0.1.0-experimental`; source HEAD `90abb337fb40e92ac1cb901e4fb2c3390844f05b` with **uncommitted changes**, so HEAD is not an immutable digest of this tested implementation.
+- Normative draft: `0.1.1-experimental`, spec commit `9ba475c17afa48ab02c50ed48991ea435eff10a0`; vectors `0.1.4`; runner commit `d549b5fcaffc8c267e57de019b3d5fc521589873`.
+- Local runner date: 2026-10-18. Environment: Windows 10.0.26200, Node.js v24.18.0, x64. The exact six machine-readable runner outputs are preserved in [the local report](conformance-runner-local.json), marked dirty-worktree rather than attested release evidence.
+- Evidence format: provisional `application/cw-evidence+jwt`; ES256 only. The reference accepts one configured issuer/domain/audience/subject and a bounded keyring. Exact configured issuer and domain authority is required; the view uses 30 seconds of clock skew and a 3,600-second maximum evidence lifetime. No network key discovery or per-token revocation exists.
+- SDK default input limits: 16 requirements, 16,384 combined requirement-field bytes, 8,192 bytes per token, 8,192 decoded bytes, and JSON depth 32. The reference's POST body limit is 16,384 bytes. HTTP header and request timeouts are ten seconds, outbound delivery timeout five seconds, and the example client overall deadline fifteen seconds. The observer deliberately waits zero seconds for causal progress.
+- Fault assumptions and backup/repair rules: [fault model](FAULT_MODEL.md). Projection rows and frontier commit together in one SQLite transaction; read state and lineage share a transaction. This is a single-host, single-process-per-role, WAL/`synchronous = FULL` model, not a power-loss or multi-host guarantee.
+
+## Selected runner profiles
+
+The runner used a separate detached spec worktree at the exact pin, without changing the working spec checkout. All six local invocations exited zero:
+
+| SDK adapter profile | Result | Cases | What this does not establish |
+| --- | --- | ---: | --- |
+| `evidence-verification-v1` | pass | 32 | Producer commitment, application trust provisioning, or all future encodings |
+| `prefix-evaluation-v1` | pass | 17 | Durable reference view lineage; carrier reduction cases `PFX-012/013/020` are excluded |
+| `context-reduction-v1` | pass | 3 | A reference client that stores multi-item context or reports local context loss |
+| `http-client-confirmation-v1` | pass | 11 | `HTTP-006` redirect-agent forwarding, TLS deployment, or browser behavior |
+| `http-observer-v1` | pass | 15 | Network server, authorization integration, cancellation, or real transactional snapshots |
+| `http-transport-server-v1` | pass | 7 | TLS, HTTP/2+, proxies, or a durable deployed service |
+
+Reproduce with `npm run build` in `typescript/` and a detached checkout of the spec commit above. From `typescript/`, run `node ../conformance/runner.mjs --spec <PINNED_SPEC_WORKTREE> --profile <PROFILE> -- node scripts/conformance-adapter.mjs` for the first five profiles. For `http-transport-server-v1`, use `node scripts/transport-conformance-server.mjs` after `--`. The runner itself was at the commit above. The JSON artifact records every returned case, not just pass counts. It does **not** attest that the current dirty tree can be reconstructed from HEAD.
+
+## Reference application classes
+
+| Specification class | Observed evidence in this reference | Status / missing proof |
+| --- | --- | --- |
+| Core Carrier (§8.2) | [Example client](client.mjs) forwards one opaque evidence item and rejects an unaware success; the SDK reduction profile passes. | **Not claimed.** The reference client does not retain arbitrary multi-item contexts or expose loss from a storage/retention limit. |
+| Prefix Issuer (§8.3) | [Source store](order-store.mjs) commits a stable fact/outbox and application request-key mapping together before evidence, stores exact decimal positions, recovers blank or expired evidence, and rejects reuse under changed database identity. A keyed retry returns the same fact, including across restart and evidence expiry. [Process test](service.test.mjs) kills immediately after the source commit, verifies the blank row, and recovers delivery; a separate test kills after observable evidence. A [two-process test](source-concurrency.test.mjs) forces one short writer-lock collision and checks exact keyed deduplication and ordered positions. | **Partial.** The §8.9 observable-evidence recovery path is exercised locally, but no reviewed rollover execution, sustained concurrency or power-loss campaign establishes the full deployment class. Older unkeyed writes cannot be retroactively deduplicated. |
+| Prefix Verifier (§8.4) | [View store](order-store.mjs) applies only contiguous positions, writes rows/frontier together, reads a state-bound cut, and reports `unknown` for a same-row-count lineage gap. The service is killed between projection-row write and frontier update, and after the atomic commit before acknowledgement; rollback, durable frontier, and replay are checked on restart. The SDK evaluator covers all six outcomes synthetically. | **Partial.** The reference has no authorized irrelevant-fact classification, terminal-failure recording, or composite/multi-domain observation. SQLite's one transaction has no independently durable projection-before-frontier state; the §8.9 kill points bracket that atomic boundary, but no power-loss proof exists. |
+| JWS Evidence Producer/Consumer (§8.5) | The SDK's verifier passes 32 selected pinned signed cases and three separate unreleased signed URI-identity cases; the reference issues and verifies ES256. Valid application delivery proofs that wrap forged causal evidence or an event whose issuance time disagrees with its verified evidence are rejected before state mutation. | **SDK pinned consumer profile pass; application class not claimed.** No independent review of key custody, incident revocation, or complete producer/consumer mandatory-coverage matrix for this deployment. The selected URI rule is an unreleased draft change and is not covered by the pinned runner or historical Rust peer. |
+| HTTP Client (§8.6) | The portable SDK's selected 11-case response profile passes; [the client](client.mjs) uses authenticated HTTPS, bounded retries only after explicit retryable lag, and rejects ordinary/unaware responses. | **Partial.** The profile excludes redirect-agent case `HTTP-006`; the example covers one route/principal and is not a general browser or proxy client claim. |
+| HTTP Server (§8.7) | The SDK's fixed-cut observer and raw loopback profiles pass 15 and 7 cases. The reference runs a real HTTPS route with ordinary auth before causal evaluation, a view snapshot, input bounds, marker-free local/input errors, and a stale-to-confirmed process test. | **Partial.** A complete deployment class requires broader route, failure, cancellation, proxy/TLS-chain, authorization-race, and resource evidence. The fixed-cut profile does not prove this view's transaction contract. |
+
+No class above is promoted by the 85 selected passing runner cases. The [general implementation report](../CONFORMANCE.md) records the wider SDK and historical interoperability experiments; the [product milestone](../PRODUCT_MILESTONE.md) records the remaining reference exit evidence.
+
+## Crash and deviation register
+
+- **Issuer boundary:** a service test now kills immediately after the source commit, before evidence issuance, and verifies blank-row recovery; another kills after evidence was observable. These are process crashes, not device or power failures.
+- **Verifier boundary:** the reference service is killed after projection-row write but before frontier update, then after atomic commit but before delivery acknowledgement. SQLite rolls the first transaction back and retains both state and frontier in the second. This does not prove storage behavior under power loss.
+- **Lineage loss:** a deliberately noncontiguous applied row yields `unknown`; this is a logical corruption test, not a filesystem fault campaign.
+- **Known limitations:** no terminal `failed` outcome in the order application, no irrelevant classification, no multiple source domains, no online schema migration, no power-loss or fsync campaign, no externally operated restore, and no sustained concurrent load. The single-host [resource samples](MEASUREMENTS.md) are not capacity limits.
+- **External gates:** no independent review, external developer walkthrough, external pilot, release attestation, or registry package is recorded here. The package remains private and experimental.
+
+Next report revision needs an immutable source revision, complete class-specific mandatory-case coverage, operator-configured TLS and restore evidence, and a maintainer attestation. Until then this is an evidence map, not a certificate.

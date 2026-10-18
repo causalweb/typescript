@@ -1,6 +1,6 @@
 # Changelog
 
-Pending release notes now live in [.changeset](.changeset/README.md) and are generated into version entries by Changesets. No release has been published.
+Pending release notes live in the source repository's `.changeset/` directory and are generated into version entries by Changesets. No release has been published.
 
 ## Pre-Changesets engineering history
 

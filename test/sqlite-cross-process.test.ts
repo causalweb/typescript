@@ -5,7 +5,7 @@ import { mkdtemp, readFile, rm } from "node:fs/promises";
 import { request as httpsRequest } from "node:https";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
-import { test } from "node:test";
+import { test } from "vitest";
 
 import { acceptConfirmation, parseContext, requestHeaders } from "../src/index.js";
 
@@ -168,7 +168,7 @@ test("SQLite observer TLS requires its explicit test trust anchor", async (conte
   );
   const sourceOrigin = await source.origin;
   const observerOrigin = await observer.origin;
-  context.after(async () => {
+  context.onTestFinished(async () => {
     if (source.child.exitCode === null) await stop(source, sourceOrigin);
     if (observer.child.exitCode === null) {
       const stopped = new Promise<void>((resolveExit) =>
@@ -235,7 +235,7 @@ test("independent SQLite source and observer processes preserve committed causal
   );
   let sourceOrigin = await source.origin;
   let observerOrigin = await observer.origin;
-  context.after(async () => {
+  context.onTestFinished(async () => {
     if (source.child.exitCode === null) await stop(source, sourceOrigin);
     if (observer.child.exitCode === null) await stop(observer, observerOrigin);
     assert.equal(resolve(root, ".."), resolve(tmpdir()));

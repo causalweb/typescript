@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
+import { spawnSync } from "node:child_process";
 import { createPublicKey, generateKeyPairSync, sign } from "node:crypto";
-import { test } from "node:test";
+import { test } from "vitest";
 import {
   acceptConfirmation,
   CLAIM,
@@ -59,6 +60,36 @@ function verifier(publicKey: ReturnType<typeof pair>["publicKey"], skew = 0n): V
     },
   ]);
 }
+
+test("signed absolute-URI identities reject fragments without normalizing percent escapes", () => {
+  const keys = pair();
+  const consumer = verifier(keys.publicKey);
+  for (const patch of [
+    { iss: `${ISSUER}#issuer` },
+    { [CLAIM]: { ...claims()[CLAIM], profile: `${PROFILE}#variant` } },
+    { [CLAIM]: { ...claims()[CLAIM], profile: `${PROFILE}#` } },
+    { [CLAIM]: { ...claims()[CLAIM], domain: `${DOMAIN}#part` } },
+  ]) {
+    const compact = rawSign(keys.privateKey, JSON.stringify({ ...claims(), ...patch }));
+    assert.throws(() => consumer.verify(compact, SUBJECT, 100n), ProtocolError);
+  }
+  const encodedDomain = `${DOMAIN}%23part`;
+  const encodedConsumer = new Verifier(AUDIENCE, [
+    {
+      issuer: ISSUER,
+      keys: new Map([["test-key", keys.publicKey]]),
+      domains: new Set([encodedDomain]),
+      maxLifetimeSeconds: 86400n,
+      clockSkewSeconds: 0n,
+    },
+  ]);
+  const compact = rawSign(
+    keys.privateKey,
+    JSON.stringify({ ...claims(), [CLAIM]: { ...claims()[CLAIM], domain: encodedDomain } }),
+  );
+  assert.equal(encodedConsumer.verify(compact, SUBJECT, 100n).domain, encodedDomain);
+  assert.throws(() => consumer.verify(compact, SUBJECT, 100n), ProtocolError);
+});
 function snapshot(
   frontiers: readonly Frontier[],
   representation?: Representation,
@@ -72,11 +103,12 @@ function snapshot(
   );
 }
 
-for (const [name, count] of [
-  ["jws-evidence.json", 6],
-  ["evidence-validation.json", 26],
+for (const [name, count, status] of [
+  ["jws-evidence.json", 6, "pinned"],
+  ["evidence-validation.json", 26, "pinned"],
+  ["uri-identities.json", 3, "unreleased draft"],
 ] as const) {
-  test(`all ${count} pinned ${name} fixtures`, () => {
+  test(`all ${count} ${status} ${name} fixtures`, () => {
     const file = fixture(name);
     const consumer = new Verifier(file.expected_audience, [
       {
@@ -118,6 +150,37 @@ for (const [name, count] of [
     }
   });
 }
+
+test("draft URI identities pass through the TypeScript conformance adapter", () => {
+  const vector = fixture("uri-identities.json");
+  for (const entry of vector.cases) {
+    const input = {
+      version: 1,
+      profile: "evidence-verification-v1",
+      vector_file: "uri-identities.json",
+      vector,
+      case: entry,
+      trust: {
+        issuer: vector.expected_issuer,
+        subject: vector.expected_subject,
+        audience: vector.expected_audience,
+        public_jwk: vector.public_jwk,
+        domains: vector.authorized_domains,
+        maximum_lifetime_seconds: vector.max_lifetime_seconds,
+        clock_skew_seconds: vector.clock_skew_seconds,
+        now: vector.validation_time,
+      },
+    };
+    const result = spawnSync(process.execPath, ["scripts/conformance-adapter.mjs"], {
+      input: `${JSON.stringify(input)}\n`,
+      encoding: "utf8",
+      timeout: 5000,
+      maxBuffer: 1024 * 1024,
+    });
+    assert.equal(result.status, 0, result.stderr);
+    assert.deepEqual(JSON.parse(result.stdout), { id: entry.id, outcome: entry.expected });
+  }
+});
 
 test("all twenty pinned prefix/composition fixtures", () => {
   const vectors = fixture("prefix-evaluation.json"),

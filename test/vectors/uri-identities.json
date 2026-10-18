@@ -1,0 +1,42 @@
+{
+  "format": "causal-web-uri-identities-v1",
+  "expected_issuer": "https://issuer.example",
+  "expected_subject": "opaque-tenant",
+  "expected_audience": "https://verifier.example/causal",
+  "authorized_domains": [
+    "https://issuer.example/domains/a",
+    "https://issuer.example/domains/a%23part"
+  ],
+  "validation_time": 100,
+  "max_lifetime_seconds": 1000,
+  "clock_skew_seconds": 0,
+  "public_jwk": {
+    "kty": "EC",
+    "x": "UMNYXdTipBsvszVQHPefyF9TQk-egm1lA7CTQGVF1RE",
+    "y": "fnI9U7VpiY1A5dSFM3X-cFbYEUCiM0sVbNMh7hW12E0",
+    "crv": "P-256",
+    "kid": "uri-test-key",
+    "use": "sig",
+    "alg": "ES256"
+  },
+  "cases": [
+    {
+      "id": "URI-001",
+      "description": "Percent-encoded number sign is data in a signed domain identity",
+      "expected": "accept",
+      "compact": "eyJhbGciOiJFUzI1NiIsImtpZCI6InVyaS10ZXN0LWtleSIsInR5cCI6ImN3LWV2aWRlbmNlK2p3dCJ9.eyJpc3MiOiJodHRwczovL2lzc3Vlci5leGFtcGxlIiwic3ViIjoib3BhcXVlLXRlbmFudCIsImF1ZCI6Imh0dHBzOi8vdmVyaWZpZXIuZXhhbXBsZS9jYXVzYWwiLCJpYXQiOjEsImV4cCI6MTAwMCwianRpIjoidXJuOnV1aWQ6MDAwMDAwMDAtMDAwMC00MDAwLTgwMDAtMDAwMDAwMDAwMDAxIiwiaHR0cHM6Ly9naXRodWIuY29tL2NhdXNhbHdlYi9zcGVjL2NsYWltcy92MSI6eyJ2IjoxLCJwcm9maWxlIjoiaHR0cHM6Ly9naXRodWIuY29tL2NhdXNhbHdlYi9zcGVjL3Byb2ZpbGVzL3ByZWZpeC0wMSIsImRvbWFpbiI6Imh0dHBzOi8vaXNzdWVyLmV4YW1wbGUvZG9tYWlucy9hJTIzcGFydCIsInBvc2l0aW9uIjoiNSIsImNvbW1pdCI6InN0YWJsZSJ9fQ.KgGhdBiihbzmst_WqNKadFCXwKzFRHmJyWGZaQbefRcLLNbsVgryxYy9dNAUKnl8J1ZI-7Sq2KiI99oVvf632w"
+    },
+    {
+      "id": "URI-002",
+      "description": "Signed profile with a literal fragment is invalid syntax",
+      "expected": "reject-request",
+      "compact": "eyJhbGciOiJFUzI1NiIsImtpZCI6InVyaS10ZXN0LWtleSIsInR5cCI6ImN3LWV2aWRlbmNlK2p3dCJ9.eyJpc3MiOiJodHRwczovL2lzc3Vlci5leGFtcGxlIiwic3ViIjoib3BhcXVlLXRlbmFudCIsImF1ZCI6Imh0dHBzOi8vdmVyaWZpZXIuZXhhbXBsZS9jYXVzYWwiLCJpYXQiOjEsImV4cCI6MTAwMCwianRpIjoidXJuOnV1aWQ6MDAwMDAwMDAtMDAwMC00MDAwLTgwMDAtMDAwMDAwMDAwMDAyIiwiaHR0cHM6Ly9naXRodWIuY29tL2NhdXNhbHdlYi9zcGVjL2NsYWltcy92MSI6eyJ2IjoxLCJwcm9maWxlIjoiaHR0cHM6Ly9naXRodWIuY29tL2NhdXNhbHdlYi9zcGVjL3Byb2ZpbGVzL3ByZWZpeC0wMSN2YXJpYW50IiwiZG9tYWluIjoiaHR0cHM6Ly9pc3N1ZXIuZXhhbXBsZS9kb21haW5zL2EiLCJwb3NpdGlvbiI6IjUiLCJjb21taXQiOiJzdGFibGUifX0.O1VP0RxDZ6vwaH9S83BGzxH2nHEoVgWAvQy1xbn8_fngBrOLOxEzjtqKASsxA9rIGT6m4E1OSqGkGyipTdGuiQ"
+    },
+    {
+      "id": "URI-003",
+      "description": "An empty trailing fragment is still forbidden",
+      "expected": "reject-request",
+      "compact": "eyJhbGciOiJFUzI1NiIsImtpZCI6InVyaS10ZXN0LWtleSIsInR5cCI6ImN3LWV2aWRlbmNlK2p3dCJ9.eyJpc3MiOiJodHRwczovL2lzc3Vlci5leGFtcGxlIiwic3ViIjoib3BhcXVlLXRlbmFudCIsImF1ZCI6Imh0dHBzOi8vdmVyaWZpZXIuZXhhbXBsZS9jYXVzYWwiLCJpYXQiOjEsImV4cCI6MTAwMCwianRpIjoidXJuOnV1aWQ6MDAwMDAwMDAtMDAwMC00MDAwLTgwMDAtMDAwMDAwMDAwMDAzIiwiaHR0cHM6Ly9naXRodWIuY29tL2NhdXNhbHdlYi9zcGVjL2NsYWltcy92MSI6eyJ2IjoxLCJwcm9maWxlIjoiaHR0cHM6Ly9naXRodWIuY29tL2NhdXNhbHdlYi9zcGVjL3Byb2ZpbGVzL3ByZWZpeC0wMSMiLCJkb21haW4iOiJodHRwczovL2lzc3Vlci5leGFtcGxlL2RvbWFpbnMvYSIsInBvc2l0aW9uIjoiNSIsImNvbW1pdCI6InN0YWJsZSJ9fQ.HYoEK_Hm6u0phwjXMFBqdUZgzqTJBTNTAyRDJlXGCXrWsgeEI4vruuFZJVYMa-Murj8tq0Qp-39c_-dmA9h20g"
+    }
+  ]
+}
