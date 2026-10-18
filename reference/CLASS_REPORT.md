@@ -41,7 +41,7 @@ No class above is promoted by the 85 selected passing runner cases. The [general
 
 ## Crash and deviation register
 
-- **Issuer boundary:** a service test now kills immediately after the source commit, before evidence issuance, and verifies blank-row recovery; another kills after evidence was observable. These are process crashes, not device or power failures.
+- **Issuer boundary:** a service test kills inside the source transaction after the fact insert and verifies rollback of fact, sequence, and request-key map; it then kills immediately after a committed retry, before evidence issuance, and verifies blank-row recovery. Another test kills after evidence was observable. These are process crashes, not device or power failures.
 - **Verifier boundary:** the reference service is killed after projection-row write but before frontier update, then after atomic commit but before delivery acknowledgement. SQLite rolls the first transaction back and retains both state and frontier in the second. This does not prove storage behavior under power loss.
 - **Lineage loss:** a deliberately noncontiguous applied row yields `unknown`; this is a logical corruption test, not a filesystem fault campaign.
 - **Known limitations:** terminal `failed` is a manual view-operator assertion, not an independently reviewed incident diagnosis; no irrelevant classification, multiple source domains, general online schema migration beyond the documented v1 upgrades, power-loss or fsync campaign, externally operated restore, or sustained concurrent load. The single-host [resource samples](MEASUREMENTS.md) are not capacity limits.

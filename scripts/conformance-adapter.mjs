@@ -3,6 +3,7 @@ import { createPublicKey, generateKeyPairSync, sign } from "node:crypto";
 import {
   acceptConfirmation,
   CLAIM,
+  fetchObservation,
   ObservationError,
   observe,
   PROFILE,
@@ -282,6 +283,31 @@ function httpResult(input) {
   return { id: testCase.id, result };
 }
 
+async function redirectResult(input) {
+  if (
+    input.version !== 1 ||
+    input.profile !== "http-redirect-agent-v1" ||
+    input.case?.id !== "HTTP-006" ||
+    typeof input.requirement !== "string" ||
+    typeof input.url !== "string"
+  )
+    throw new Error("invalid redirect conformance input");
+  let accepted = false;
+  try {
+    const result = await fetchObservation(input.url, [input.requirement], {
+      authenticated: () => true,
+    });
+    accepted = result.kind === "confirmed";
+    await result.response.body?.cancel();
+  } catch (error) {
+    if (error?.code !== "unconfirmed") throw error;
+  }
+  return {
+    id: input.case.id,
+    result: { client_accepts_constrained_success: accepted },
+  };
+}
+
 function observerEvidence(privateKey, assumptions, testCase, requirement, index) {
   return signedEvidence(privateKey, {
     iss: assumptions.issuer,
@@ -446,7 +472,9 @@ process.stdin.on("end", async () => {
             ? contextReductionResult(input)
             : input.profile === "http-client-confirmation-v1"
               ? httpResult(input)
-              : await observerResult(input);
+              : input.profile === "http-redirect-agent-v1"
+                ? await redirectResult(input)
+                : await observerResult(input);
     process.stdout.write(`${JSON.stringify(response)}\n`);
   } catch (error) {
     process.stderr.write(`${error instanceof Error ? error.message : String(error)}\n`);

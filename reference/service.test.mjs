@@ -339,7 +339,7 @@ test("reference services recover across source and projection commit crash bound
     "cw-request-key": "first",
   };
   let source = start(
-    { ...sourceEnvironment, CW_TEST_FAULT_POINT: "after-source-commit" },
+    { ...sourceEnvironment, CW_TEST_FAULT_POINT: "before-source-commit" },
     sourcePort,
   );
   let view;
@@ -349,6 +349,38 @@ test("reference services recover across source and projection commit crash bound
     assert.ok(directory.startsWith(join(resolve(tmpdir()), "causalweb-reference-crash-")));
     await rm(directory, { recursive: true });
   });
+  await source.ready;
+  await assert.rejects(
+    exchange(
+      sourcePort,
+      certificate,
+      "/orders",
+      "POST",
+      orderHeaders,
+      JSON.stringify({ order: "first" }),
+    ),
+  );
+  await waitForCrash(source);
+  const uncommitted = new OrderSourceStore(sourceEnvironment.CW_DATABASE, identity);
+  assert.deepEqual(uncommitted.unissued(), []);
+  uncommitted.close();
+  const rolledBackSource = new DatabaseSync(sourceEnvironment.CW_DATABASE, { readOnly: true });
+  assert.equal(
+    rolledBackSource.prepare("SELECT COUNT(*) AS count FROM source_orders").get().count,
+    0,
+  );
+  assert.equal(
+    rolledBackSource.prepare("SELECT next_position FROM source_state WHERE id = 1").get()
+      .next_position,
+    "1",
+  );
+  assert.equal(
+    rolledBackSource.prepare("SELECT COUNT(*) AS count FROM source_requests").get().count,
+    0,
+  );
+  rolledBackSource.close();
+
+  source = start({ ...sourceEnvironment, CW_TEST_FAULT_POINT: "after-source-commit" }, sourcePort);
   await source.ready;
   await assert.rejects(
     exchange(
