@@ -37,6 +37,8 @@ test("generic URIs preserve identifiers and do not repair invalid syntax", () =>
     "https://host/back\\slash",
     "https://host/a b",
     "https://[bad-ip]/",
+    "https://[fe80::1%eth0]/",
+    "https://[fe80::1%25eth0]/",
     "https://host:bad/",
     "https://host/#a#b",
     "https://host/#fragment",
@@ -45,6 +47,7 @@ test("generic URIs preserve identifiers and do not repair invalid syntax", () =>
     "https://host/é",
   ])
     assert.equal(absoluteUri(uri), false, uri);
+  assert.equal(httpsIssuer("https://[fe80::1%25eth0]/"), false);
 });
 
 test("fragment-free URI syntax applies to issuer and configured identities", () => {

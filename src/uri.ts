@@ -33,6 +33,7 @@ export function absoluteUri(value: string): boolean {
       const close = authority.indexOf("]");
       if (close === -1) return false;
       const ip = authority.slice(1, close);
+      if (ip.includes("%")) return false;
       if (
         isIP(ip) !== 6 &&
         !new RegExp(`^[vV][0-9A-Fa-f]+\\.[${unreserved}${subdelims}:]+$`).test(ip)
