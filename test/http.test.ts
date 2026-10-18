@@ -1,5 +1,7 @@
 import assert from "node:assert/strict";
+import { spawn } from "node:child_process";
 import { generateKeyPairSync } from "node:crypto";
+import { once } from "node:events";
 import { createServer, type Server } from "node:http";
 import { test } from "vitest";
 import {
@@ -173,6 +175,7 @@ test("real loopback HTTP enforces dependencies and safely converts local adapter
 
 test("a legacy 200 is rejected and a cross-origin redirect never forwards evidence", async (t) => {
   const requests: string[] = [];
+  const originRequirements: string[] = [];
   const destination = createServer((req, res) => {
     requests.push(req.headers["causal-require"]?.toString() ?? "");
     res.end("must not be reached");
@@ -184,6 +187,7 @@ test("a legacy 200 is rejected and a cross-origin redirect never forwards eviden
   const otherOrigin = await listen(destination);
   const server = createServer((req, res) => {
     if (req.url === "/redirect") {
+      originRequirements.push(req.headers["causal-require"]?.toString() ?? "");
       res.writeHead(302, { Location: `${otherOrigin}/view` });
       res.end();
     } else res.end("unaware origin");
@@ -201,6 +205,32 @@ test("a legacy 200 is rejected and a cross-origin redirect never forwards eviden
     fetchObservation(`${origin}/redirect`, ["opaque-test-token"], testAuthentication),
     { code: "unconfirmed" },
   );
+  assert.deepEqual(requests, []);
+
+  const adapter = spawn(process.execPath, ["scripts/conformance-adapter.mjs"], {
+    cwd: process.cwd(),
+    stdio: ["pipe", "pipe", "pipe"],
+  });
+  let stdout = "";
+  let stderr = "";
+  adapter.stdout.setEncoding("utf8").on("data", (chunk) => (stdout += chunk));
+  adapter.stderr.setEncoding("utf8").on("data", (chunk) => (stderr += chunk));
+  adapter.stdin.end(
+    `${JSON.stringify({
+      version: 1,
+      profile: "http-redirect-agent-v1",
+      case: { id: "HTTP-006" },
+      url: `${origin}/redirect`,
+      requirement: "opaque-test-token",
+    })}\n`,
+  );
+  const [code] = await once(adapter, "close");
+  assert.equal(code, 0, stderr);
+  assert.deepEqual(JSON.parse(stdout), {
+    id: "HTTP-006",
+    result: { client_accepts_constrained_success: false },
+  });
+  assert.equal(originRequirements.at(-1), '"opaque-test-token"');
   assert.deepEqual(requests, []);
 });
 
