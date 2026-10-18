@@ -423,6 +423,15 @@ export class OrderSourceStore {
       .all(limit);
   }
 
+  replayBatch(after = "0") {
+    position(after);
+    return this.#database
+      .prepare(
+        "SELECT event_id AS id, position, order_value AS `order`, issued_at AS issuedAt, expires_at AS expiresAt, evidence FROM source_orders WHERE length(position) > length(?) OR (length(position) = length(?) AND position > ?) ORDER BY length(position), position LIMIT 100",
+      )
+      .all(after, after, after);
+  }
+
   delivered(id, evidence) {
     const result = this.#database
       .prepare(
