@@ -9,6 +9,7 @@ import { join, resolve } from "node:path";
 import { DatabaseSync } from "node:sqlite";
 import { CLAIM, Issuer, parseContext, requestHeaders, Verifier } from "@causalweb/protocol";
 import { test } from "vitest";
+import { recordFailureDecision } from "./operator.mjs";
 import { OrderSourceStore, OrderViewStore } from "./order-store.mjs";
 
 async function freePort() {
@@ -86,6 +87,109 @@ async function exchange(port, certificate, path, method = "GET", headers = {}, b
     request.end(body);
   });
 }
+
+test("live HTTPS view reports only operator-recorded terminal failure", async (context) => {
+  const directory = await mkdtemp(join(tmpdir(), "causalweb-reference-failed-http-"));
+  assert.equal(resolve(directory, ".."), resolve(tmpdir()));
+  const tlsKey = resolve("test/fixtures/localhost-key.pem");
+  const tlsCertificate = resolve("test/fixtures/localhost-cert.pem");
+  const certificate = await readFile(tlsCertificate);
+  const { privateKey, publicKey } = generateKeyPairSync("ec", { namedCurve: "prime256v1" });
+  const verificationKey = join(directory, "verification.pem");
+  const keyring = join(directory, "verification-keys.json");
+  await writeFile(verificationKey, publicKey.export({ format: "pem", type: "spki" }));
+  await writeFile(keyring, JSON.stringify([{ kid: "key-1", publicKeyFile: "verification.pem" }]));
+  const port = await freePort();
+  const settings = {
+    CW_ROLE: "view",
+    CW_DATABASE: join(directory, "view.sqlite"),
+    CW_ISSUER: "https://orders.example",
+    CW_DOMAIN: "https://orders.example/domains/orders",
+    CW_AUDIENCE: "https://view.example/causal",
+    CW_SUBJECT: "tenant-a",
+    CW_KID: "key-1",
+    CW_APP_TOKEN: "application-secret-for-tenant-a",
+    CW_DELIVERY_TOKEN: "separate-delivery-secret",
+    CW_TLS_KEY_FILE: tlsKey,
+    CW_TLS_CERT_FILE: tlsCertificate,
+    CW_VERIFY_KEYRING_FILE: keyring,
+  };
+  const identity = {
+    issuer: settings.CW_ISSUER,
+    domain: settings.CW_DOMAIN,
+    audience: settings.CW_AUDIENCE,
+    subject: settings.CW_SUBJECT,
+  };
+  const now = BigInt(Math.floor(Date.now() / 1000));
+  const issuer = new Issuer(
+    identity.issuer,
+    "key-1",
+    privateKey,
+    new Set([identity.domain]),
+    3600n,
+  );
+  const event = (value) => {
+    const id = `urn:uuid:00000000-0000-4000-8000-00000000000${value}`;
+    return {
+      id,
+      position: String(value),
+      order: `order-${value}`,
+      issuedAt: now.toString(),
+      expiresAt: (now + 3600n).toString(),
+      evidence: issuer.issueCommitted(
+        {
+          subject: identity.subject,
+          audiences: [identity.audience],
+          domain: identity.domain,
+          position: BigInt(value),
+          issuedAt: now,
+          expiresAt: now + 3600n,
+          evidenceId: id,
+        },
+        now,
+      ),
+    };
+  };
+  const first = event(1);
+  const second = event(2);
+  const pending = new OrderViewStore(settings.CW_DATABASE, identity);
+  pending.accept(second);
+  pending.close();
+  let view = start(settings, port);
+  context.onTestFinished(async () => {
+    await stop(view);
+    await rm(directory, { recursive: true });
+  });
+  await view.ready;
+  const read = (item, authenticated = true) =>
+    exchange(port, certificate, "/orders", "GET", {
+      ...Object.fromEntries(requestHeaders([item.evidence])),
+      ...(authenticated ? { authorization: `Bearer ${settings.CW_APP_TOKEN}` } : {}),
+    });
+  assert.equal((await read(second)).status, 412);
+  recordFailureDecision("mark-failed", "2", settings);
+  const failed = await read(second);
+  assert.equal(failed.status, 503);
+  assert.equal(failed.headers["causal-result"], "unsatisfied");
+  assert.equal(JSON.parse(failed.body.toString("utf8")).outcomes[0].outcome, "failed");
+  assert.equal((await read(first)).status, 412);
+  const denied = await read(second, false);
+  assert.equal(denied.status, 401);
+  assert.equal(denied.headers["causal-result"], undefined);
+  await stop(view);
+  view = start(settings, port);
+  await view.ready;
+  assert.equal((await read(second)).status, 503);
+  recordFailureDecision("resolve-failed", "2", settings);
+  assert.equal((await read(second)).status, 412);
+  recordFailureDecision("mark-failed", "2", settings);
+  const applied = new OrderViewStore(settings.CW_DATABASE, identity);
+  applied.accept(first);
+  applied.close();
+  const satisfied = await read(second);
+  assert.equal(satisfied.status, 200);
+  assert.equal(satisfied.headers["causal-result"], "satisfied");
+});
 
 test("invalid protocol identity does not bind an empty database", async (context) => {
   const directory = await mkdtemp(join(tmpdir(), "causalweb-reference-config-"));
