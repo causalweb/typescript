@@ -263,7 +263,18 @@ test("reference services recover across source and projection commit crash bound
     }
     assert.fail(`view did not reach ${JSON.stringify(expected)}`);
   };
+  const awaitDeliveryAcknowledgement = async () => {
+    for (let attempt = 0; attempt < 40; attempt += 1) {
+      const state = new OrderSourceStore(sourceEnvironment.CW_DATABASE, identity);
+      const pending = state.undelivered();
+      state.close();
+      if (pending.length === 0) return;
+      await new Promise((resolveWait) => setTimeout(resolveWait, 100));
+    }
+    assert.fail("source did not acknowledge view delivery");
+  };
   assert.equal((await awaitOrders(["first"])).frontier, "1");
+  await awaitDeliveryAcknowledgement();
 
   await stop(view);
   view = start({ ...viewEnvironment, CW_TEST_FAULT_POINT: "before-frontier" }, viewPort);
@@ -284,6 +295,7 @@ test("reference services recover across source and projection commit crash bound
   view = start(viewEnvironment, viewPort);
   await view.ready;
   assert.equal((await awaitOrders(["first", "second"])).frontier, "2");
+  await awaitDeliveryAcknowledgement();
 
   await stop(view);
   view = start({ ...viewEnvironment, CW_TEST_FAULT_POINT: "after-view-commit" }, viewPort);
