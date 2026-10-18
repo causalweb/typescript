@@ -44,6 +44,61 @@ test("backup and restore preserve a version-one source for atomic upgrade", asyn
   upgraded.close();
 });
 
+test("paired backup preserves a new view contract and its operator decision", async (context) => {
+  const directory = await mkdtemp(join(tmpdir(), "causalweb-reference-contract-backup-"));
+  assert.equal(resolve(directory, ".."), resolve(tmpdir()));
+  context.onTestFinished(async () => {
+    await rm(directory, { recursive: true });
+  });
+  const sourcePath = join(directory, "source.sqlite");
+  const viewPath = join(directory, "view.sqlite");
+  const contract = { contract: "reference-orders/test-rollover", schema: "orders/test-rollover" };
+  const { privateKey } = generateKeyPairSync("ec", { namedCurve: "prime256v1" });
+  const issuer = new Issuer(
+    IDENTITY.issuer,
+    "key-1",
+    privateKey,
+    new Set([IDENTITY.domain]),
+    3600n,
+  );
+  const source = new OrderSourceStore(sourcePath, IDENTITY);
+  const first = source.commit("first", 1000n, 4600n, "first");
+  const evidenceFor = (event) =>
+    issuer.issueCommitted(
+      {
+        subject: IDENTITY.subject,
+        audiences: [IDENTITY.audience],
+        domain: IDENTITY.domain,
+        position: BigInt(event.position),
+        issuedAt: 1000n,
+        expiresAt: 4600n,
+        evidenceId: event.id,
+      },
+      1000n,
+    );
+  source.materialize(first.id, evidenceFor(first), 1000n, 4600n);
+  const event = source.commit("second", 1000n, 4600n, "second");
+  const evidence = evidenceFor(event);
+  source.materialize(event.id, evidence, 1000n, 4600n);
+  source.close();
+  const view = new OrderViewStore(viewPath, IDENTITY, () => {}, contract);
+  view.accept({ ...event, evidence });
+  view.decideFailure("failed", "2", "operator-a");
+  view.close();
+  const backupPath = join(directory, "backup");
+  const restoredPath = join(directory, "restored");
+  await createBackup(sourcePath, viewPath, backupPath);
+  await restoreBackup(backupPath, restoredPath);
+  const restoredViewPath = join(restoredPath, "view.sqlite");
+  assert.throws(
+    () => new OrderViewStore(restoredViewPath, IDENTITY),
+    /view contract does not match configuration/,
+  );
+  const restoredView = new OrderViewStore(restoredViewPath, IDENTITY, () => {}, contract);
+  assert.equal(restoredView.snapshot().firstTerminalFailure, "2");
+  restoredView.close();
+});
+
 test("quiescent paired SQLite backup restores source facts and a state-bound view cut", async (context) => {
   const directory = await mkdtemp(join(tmpdir(), "causalweb-reference-backup-"));
   assert.equal(resolve(directory, ".."), resolve(tmpdir()));

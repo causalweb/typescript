@@ -122,6 +122,8 @@ test("live HTTPS view reports only operator-recorded terminal failure", async (c
     CW_DOMAIN: "https://orders.example/domains/orders",
     CW_AUDIENCE: "https://view.example/causal",
     CW_SUBJECT: "tenant-a",
+    CW_VIEW_CONTRACT: "reference-orders/test-live-contract",
+    CW_VIEW_SCHEMA: "orders/test-live-contract",
     CW_KID: "key-1",
     CW_APP_TOKEN: "application-secret-for-tenant-a",
     CW_DELIVERY_TOKEN: "separate-delivery-secret",
@@ -258,7 +260,10 @@ test("invalid protocol identity does not bind an empty database", async (context
         CW_DATABASE: join(directory, "view.sqlite"),
         CW_VERIFY_KEYRING_FILE: keyring,
       },
-      invalid: [{ CW_DOMAIN: `${common.CW_DOMAIN}#fragment` }],
+      invalid: [
+        { CW_DOMAIN: `${common.CW_DOMAIN}#fragment` },
+        { CW_VIEW_CONTRACT: "reference-orders/test-unpaired" },
+      ],
       port: viewPort,
     },
   ];
