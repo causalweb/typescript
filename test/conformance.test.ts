@@ -106,23 +106,25 @@ function snapshot(
 for (const [name, count, status] of [
   ["jws-evidence.json", 6, "pinned"],
   ["evidence-validation.json", 26, "pinned"],
-  ["uri-identities.json", 3, "unreleased draft"],
+  ["uri-identities.json", 4, "unreleased draft"],
 ] as const) {
   test(`all ${count} ${status} ${name} fixtures`, () => {
     const file = fixture(name);
-    const consumer = new Verifier(file.expected_audience, [
-      {
-        issuer: file.expected_issuer,
-        keys: new Map([
-          [file.public_jwk.kid, createPublicKey({ key: file.public_jwk, format: "jwk" })],
-        ]),
-        domains: new Set(file.authorized_domains ?? ["https://issuer.example/domains/orders/2026"]),
-        maxLifetimeSeconds: BigInt(file.max_lifetime_seconds ?? 86400),
-        clockSkewSeconds: BigInt(file.clock_skew_seconds ?? 0),
-      },
-    ]);
     assert.equal(file.cases.length, count);
     for (const entry of file.cases) {
+      const consumer = new Verifier(file.expected_audience, [
+        {
+          issuer: entry.trusted_issuer ?? file.expected_issuer,
+          keys: new Map([
+            [file.public_jwk.kid, createPublicKey({ key: file.public_jwk, format: "jwk" })],
+          ]),
+          domains: new Set(
+            file.authorized_domains ?? ["https://issuer.example/domains/orders/2026"],
+          ),
+          maxLifetimeSeconds: BigInt(file.max_lifetime_seconds ?? 86400),
+          clockSkewSeconds: BigInt(file.clock_skew_seconds ?? 0),
+        },
+      ]);
       if (entry.expected === "reject-request")
         assert.throws(
           () => consumer.verify(entry.compact, file.expected_subject, BigInt(file.validation_time)),
@@ -161,7 +163,7 @@ test("draft URI identities pass through the TypeScript conformance adapter", () 
       vector,
       case: entry,
       trust: {
-        issuer: vector.expected_issuer,
+        issuer: entry.trusted_issuer ?? vector.expected_issuer,
         subject: vector.expected_subject,
         audience: vector.expected_audience,
         public_jwk: vector.public_jwk,

@@ -10,7 +10,7 @@ interface EvidenceFixtures {
   max_lifetime_seconds?: number;
   clock_skew_seconds?: number;
   validation_time: number;
-  cases: { id: string; compact: string; expected: string }[];
+  cases: { id: string; compact: string; expected: string; trusted_issuer?: string }[];
 }
 
 type Domain = "domain_a" | "domain_b";
