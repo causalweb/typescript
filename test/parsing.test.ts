@@ -84,6 +84,37 @@ test("fragment-free URI syntax applies to issuer and configured identities", () 
   );
 });
 
+test("signed issuer identity uses exact URI spelling", () => {
+  const { publicKey, privateKey } = generateKeyPairSync("ec", { namedCurve: "prime256v1" });
+  const issuer = "HTTPS://issuer.example";
+  const domain = "urn:test:domain";
+  const token = new Issuer(issuer, "test", privateKey, new Set([domain]), 1000n).issueCommitted(
+    {
+      subject: "tenant",
+      audiences: ["audience"],
+      domain,
+      position: 1n,
+      issuedAt: 1n,
+      expiresAt: 1000n,
+    },
+    100n,
+  );
+  const verifier = (trustedIssuer: string) =>
+    new Verifier("audience", [
+      {
+        issuer: trustedIssuer,
+        keys: new Map([["test", publicKey]]),
+        domains: new Set([domain]),
+        maxLifetimeSeconds: 1000n,
+        clockSkewSeconds: 0n,
+      },
+    ]);
+  assert.equal(verifier(issuer).verify(token, "tenant", 100n).issuer, issuer);
+  assert.throws(() => verifier("https://issuer.example").verify(token, "tenant", 100n), {
+    code: "invalid-evidence",
+  });
+});
+
 test("required limits cannot be omitted by JavaScript callers", () => {
   const { publicKey } = generateKeyPairSync("ec", { namedCurve: "prime256v1" });
   const trust = {
