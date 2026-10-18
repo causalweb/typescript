@@ -559,6 +559,7 @@ export class OrderViewStore {
     this.#database.exec("BEGIN");
     try {
       const cut = readViewCut(this.#database, true);
+      this.#faultPoint("after-view-cut");
       let firstTerminalFailure;
       if (cut.frontier !== "unknown") {
         const frontier = cut.frontier === null ? 0n : canonicalPosition(cut.frontier);

@@ -25,6 +25,49 @@ const IDENTITY = {
 };
 const NOW = 1_000n;
 
+test("operator changes cannot mix with an in-flight view cut", async (context) => {
+  const directory = await mkdtemp(join(tmpdir(), "causalweb-reference-cut-"));
+  assert.equal(resolve(directory, ".."), resolve(tmpdir()));
+  const path = join(directory, "view.sqlite");
+  const settings = {
+    CW_ROLE: "view",
+    CW_DATABASE: path,
+    CW_ISSUER: IDENTITY.issuer,
+    CW_DOMAIN: IDENTITY.domain,
+    CW_AUDIENCE: IDENTITY.audience,
+    CW_SUBJECT: IDENTITY.subject,
+  };
+  let nextAction;
+  const view = new OrderViewStore(path, IDENTITY, (point) => {
+    if (point !== "after-view-cut" || nextAction === undefined) return;
+    const action = nextAction;
+    nextAction = undefined;
+    execFileSync(process.execPath, ["reference/operator.mjs", action, "2"], {
+      cwd: process.cwd(),
+      env: { ...process.env, ...settings },
+      timeout: 5000,
+    });
+  });
+  context.onTestFinished(async () => {
+    view.close();
+    await rm(directory, { recursive: true });
+  });
+  view.accept({
+    id: "urn:uuid:00000000-0000-4000-8000-000000000002",
+    position: "2",
+    order: "second",
+    issuedAt: "1000",
+    expiresAt: "4600",
+    evidence: "signed-test-evidence",
+  });
+  nextAction = "mark-failed";
+  assert.deepEqual(view.snapshot(), { frontier: null, orders: [] });
+  assert.equal(view.snapshot().firstTerminalFailure, "2");
+  nextAction = "resolve-failed";
+  assert.equal(view.snapshot().firstTerminalFailure, "2");
+  assert.deepEqual(view.snapshot(), { frontier: null, orders: [] });
+});
+
 test("only a durable view-operator decision makes an uncovered dependency failed", async (context) => {
   const directory = await mkdtemp(join(tmpdir(), "causalweb-reference-operator-"));
   assert.equal(resolve(directory, ".."), resolve(tmpdir()));
