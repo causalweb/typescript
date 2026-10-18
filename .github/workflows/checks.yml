@@ -39,7 +39,7 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           repository: causalweb/conformance
-          ref: f604148dc99ad88e652c387e4362ced467522e5b
+          ref: e272b67fea7e5581c130d478c7a04480a8cb9991
           path: .conformance
           persist-credentials: false
       - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0

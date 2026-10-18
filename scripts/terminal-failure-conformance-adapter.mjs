@@ -13,8 +13,13 @@ const DOMAIN = "https://issuer.example/domains/orders";
 const AUDIENCE = "https://view.example/causal";
 
 function identity(partition) {
-  if (partition !== "a" && partition !== "b") throw new Error("invalid partition");
-  return { issuer: ISSUER, domain: DOMAIN, audience: AUDIENCE, subject: `tenant-${partition}` };
+  if (!["a", "b", "a-v2"].includes(partition)) throw new Error("invalid partition");
+  return {
+    issuer: ISSUER,
+    domain: DOMAIN,
+    audience: AUDIENCE,
+    subject: `tenant-${partition === "a-v2" ? "a" : partition}`,
+  };
 }
 
 function verified(position, subject) {
@@ -55,14 +60,14 @@ function event(position, subject) {
   };
 }
 
-function observe(view, position, subject) {
+function observe(view, position, subject, viewContract) {
   const { evidence } = verified(position, subject);
   const state = view.snapshot();
   return new Snapshot(
     "/orders",
     null,
-    ORDER_CONTRACT,
-    ORDER_SCHEMA,
+    viewContract.contract,
+    viewContract.schema,
     new Map([
       [
         sourceKey(ISSUER, DOMAIN),
@@ -86,9 +91,19 @@ function observe(view, position, subject) {
 function run(input) {
   if (input.version !== 1 || input.profile !== "terminal-failure-draft-v1")
     throw new Error("invalid terminal-failure profile input");
-  const { id, partition, operation, position } = input.step ?? {};
-  if (typeof id !== "string" || !id || !["a", "b"].includes(partition))
+  const { id, partition, operation, position, contract, schema } = input.step ?? {};
+  if (typeof id !== "string" || !id || !["a", "b", "a-v2"].includes(partition))
     throw new Error("invalid terminal-failure step");
+  const viewContract =
+    partition === "a-v2"
+      ? { contract: "reference-orders/v2", schema: "orders/v2" }
+      : { contract: ORDER_CONTRACT, schema: ORDER_SCHEMA };
+  if (
+    (partition === "a-v2" &&
+      (contract !== viewContract.contract || schema !== viewContract.schema)) ||
+    (partition !== "a-v2" && (contract !== undefined || schema !== undefined))
+  )
+    throw new Error("invalid terminal-failure contract");
   const selected = identity(partition);
   const workspace = realpathSync(input.workspace);
   if (
@@ -103,7 +118,7 @@ function run(input) {
   if (exists && dirname(realpathSync(path)) !== workspace)
     throw new Error("terminal-failure store escapes workspace");
   let outcome;
-  const view = new OrderViewStore(path, selected);
+  const view = new OrderViewStore(path, selected, () => {}, viewContract);
   try {
     if (operation === "setup") {
       view.accept(event("1", selected.subject));
@@ -111,7 +126,7 @@ function run(input) {
       view.accept(event("4", selected.subject));
       outcome = "ready";
     } else if (operation === "observe" && ["1", "2", "3", "4"].includes(position)) {
-      outcome = observe(view, position, selected.subject);
+      outcome = observe(view, position, selected.subject, viewContract);
     } else if (operation === "mark" && position === "3") {
       view.decideFailure("failed", position, "test-view-operator");
       outcome = "recorded";
