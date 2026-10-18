@@ -32,8 +32,14 @@ jobs:
           persist-credentials: false
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
+          repository: causalweb/spec
+          ref: 501a5fd6e5289748c482e34711c8e90b42f60aff
+          path: .spec-terminal-proposal
+          persist-credentials: false
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
           repository: causalweb/conformance
-          ref: 4284bf951ee8de65991e2e415ecd9f27109dc69d
+          ref: f604148dc99ad88e652c387e4362ced467522e5b
           path: .conformance
           persist-credentials: false
       - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
@@ -53,6 +59,7 @@ jobs:
       - run: node .conformance/runner.mjs --spec .spec --profile http-observer-v1 -- node scripts/conformance-adapter.mjs
       - run: node .conformance/runner.mjs --spec .spec --profile http-transport-server-v1 -- node scripts/transport-conformance-server.mjs
       - run: node .conformance/runner.mjs --spec .spec-proposal --profile uri-identities-draft-v1 -- node scripts/conformance-adapter.mjs
+      - run: node .conformance/runner.mjs --spec .spec-terminal-proposal --profile terminal-failure-draft-v1 -- node scripts/terminal-failure-conformance-adapter.mjs
       - run: npm audit --audit-level=high
       - if: matrix.os == 'ubuntu-24.04'
         run: npm run test:package -- --preview-artifact
