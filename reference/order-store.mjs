@@ -209,8 +209,10 @@ function latestFailureActions(database) {
 
 export class OrderSourceStore {
   #database;
+  #faultPoint;
 
-  constructor(path, identity) {
+  constructor(path, identity, faultPoint = () => {}) {
+    this.#faultPoint = faultPoint;
     this.#database = new DatabaseSync(path, { timeout: 2000 });
     try {
       this.#database.exec(`
@@ -288,6 +290,7 @@ export class OrderSourceStore {
           "INSERT INTO source_orders (position, event_id, order_value, issued_at, expires_at) VALUES (?, ?, ?, ?, ?)",
         )
         .run(event.position, event.id, event.order, event.issuedAt, event.expiresAt);
+      this.#faultPoint("before-source-commit");
       this.#database
         .prepare("UPDATE source_state SET next_position = ? WHERE id = 1")
         .run((next + 1n).toString());
