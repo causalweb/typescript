@@ -1,6 +1,8 @@
 # External developer walkthrough and pilot
 
-Status: invitation material only. No external walkthrough or pilot result is recorded here. The package is private and experimental; arrange an exact source revision or `.tgz` artifact with the maintainer before starting. Do not use production data.
+Status: invitation material only. No external walkthrough or pilot result is recorded here. The package is private and experimental. Use a CI preview artifact from an exact workflow run, or arrange an exact source revision with the maintainer. Do not use production data.
+
+After a TypeScript PR's Linux and Windows checks pass, open that commit's `TypeScript checks` workflow run and download the `typescript-preview-<run SHA>` artifact. It contains the exact `.tgz` installed by the Linux package-consumer test, plus `SHA256SUMS` and `SOURCE_COMMIT`. Extract it, run `sha256sum -c SHA256SUMS` in that directory (or compare `Get-FileHash <archive.tgz> -Algorithm SHA256` with the recorded digest on Windows), and record the workflow URL and source commit. Artifacts expire after 30 days. The archive is a source preview, not an npm publication or a deployment endorsement.
 
 ## Walkthrough: can another developer use the SDK?
 

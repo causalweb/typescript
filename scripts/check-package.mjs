@@ -1,11 +1,28 @@
 import assert from "node:assert/strict";
 import { execFileSync } from "node:child_process";
-import { cpSync, existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { createHash } from "node:crypto";
+import {
+  copyFileSync,
+  cpSync,
+  existsSync,
+  mkdirSync,
+  mkdtempSync,
+  readFileSync,
+  rmSync,
+  writeFileSync,
+} from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join, posix, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), "..");
+const previewRequested = process.argv[2] === "--preview-artifact";
+assert.ok(
+  process.argv.length === 2 || (process.argv.length === 3 && previewRequested),
+  "usage: node scripts/check-package.mjs [--preview-artifact]",
+);
+const preview = join(root, "preview");
+if (previewRequested) assert.ok(!existsSync(preview), "preview directory already exists");
 const scratch = mkdtempSync(join(tmpdir(), "causalweb-npm-consumer-"));
 const manifest = JSON.parse(readFileSync(join(root, "package.json"), "utf8"));
 // Run npm's JS entry point directly so Windows does not need a shell for .cmd files.
@@ -114,6 +131,17 @@ try {
     env: environment,
     stdio: "inherit",
   });
+  if (previewRequested) {
+    const archive = readFileSync(join(scratch, packed.filename));
+    mkdirSync(preview);
+    copyFileSync(join(scratch, packed.filename), join(preview, packed.filename));
+    const digest = createHash("sha256").update(archive).digest("hex");
+    writeFileSync(join(preview, "SHA256SUMS"), `${digest}  ${packed.filename}\n`);
+    writeFileSync(
+      join(preview, "SOURCE_COMMIT"),
+      execFileSync("git", ["rev-parse", "HEAD"], { cwd: root, encoding: "utf8" }),
+    );
+  }
 } finally {
   assert.equal(dirname(scratch), resolve(tmpdir()));
   assert.ok(scratch.startsWith(join(resolve(tmpdir()), "causalweb-npm-consumer-")));
