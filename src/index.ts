@@ -1,10 +1,23 @@
 export {
+  acceptConfirmation,
+  contextHeaders,
+  type FailureProblem,
+  fetchObservation,
+  type ObservationFetchOptions,
+  type ObservationResult,
+  type ObservationWaitOptions,
+  parseContext,
+  requestHeaders,
+  serializeContext,
+  waitForObservation,
+} from "./client/index.js";
+export {
   type ErrorCode,
   ObservationError,
   type ObservationErrorCode,
   type ObservationPhase,
   ProtocolError,
-} from "./error.js";
+} from "./protocol/error.js";
 export {
   CLAIM,
   type CommittedEvidenceInput,
@@ -17,32 +30,8 @@ export {
   retainedContextIndices,
   type VerifiedEvidence,
   Verifier,
-} from "./evidence.js";
-export {
-  acceptConfirmation,
-  capabilities,
-  contextHeaders,
-  type FailureProblem,
-  fetchObservation,
-  type ObservationFetchOptions,
-  type ObservationOptions,
-  type ObservationResult,
-  type ObservationWaitOptions,
-  observe,
-  parseContext,
-  type Representation,
-  requestHeaders,
-  serializeContext,
-  waitForObservation,
-} from "./http.js";
-export { DEFAULT_LIMITS, type Limits } from "./limits.js";
-export {
-  handleNodeObservation,
-  hasCausalRequirement,
-  headersFromIncoming,
-  type NodeObservationOptions,
-  writeFetchResponse,
-} from "./node-http.js";
+} from "./protocol/evidence.js";
+export { DEFAULT_LIMITS, type Limits } from "./protocol/limits.js";
 export {
   type Evaluation,
   type Frontier,
@@ -50,4 +39,17 @@ export {
   type Outcome,
   Snapshot,
   sourceKey,
-} from "./prefix.js";
+} from "./protocol/prefix.js";
+export {
+  handleNodeObservation,
+  hasCausalRequirement,
+  headersFromIncoming,
+  type NodeObservationOptions,
+  writeFetchResponse,
+} from "./server/node.js";
+export {
+  capabilities,
+  type ObservationOptions,
+  observe,
+  type Representation,
+} from "./server/observation.js";

@@ -1,6 +1,6 @@
 # Release gates
 
-No npm package or GitHub release has been published. `private: true` prevents accidental registry publication. The configured package name is not a claim of registry ownership or availability.
+The package remains private; no npm package has been published. `private: true` prevents accidental registry publication. An experimental GitHub prerelease can distribute an exact source-preview archive after its commit passes CI, but it is not an npm release or deployment endorsement. The configured package name is not a claim of registry ownership or availability.
 
 New release notes use Changesets, configured in the source checkout's `.changeset/` directory. Prepare versions on a review branch with `npm run version:prepare`; it generates experimental version/changelog updates and refreshes npm lock metadata. Run `npm run release:check` and `npm run test:release` before review. These commands do not publish or tag. Stable-exit intent and enabling publication require a separate reviewed policy/approval change; they are not routine version preparation.
 
@@ -12,4 +12,4 @@ Before a source preview or package release:
 4. Confirm actual registry scope ownership, package-name availability, maintainer approval, and secure publishing credentials. Do not reserve names with placeholders or put tokens in repository configuration.
 5. Prepare an immutable annotated tag, preferably signed with an actual maintainer identity, package integrity checksums, and provenance where supported. Record unavailable signing rather than fabricating it.
 
-Stable package semantics do not promote the protocol. Stable specification release requires the [organization evidence register](https://github.com/causalweb/spec/blob/main/ROADMAP.md), including real persistent services, failure recovery, substantive external review, an external integration/pilot, and a recorded maintainer decision.
+Stable package semantics do not promote the protocol. Stable specification release requires the [organization's release gates](https://github.com/causalweb/spec/blob/main/GOVERNANCE.md#stable-release-evidence), including real persistent services, failure recovery, substantive external review, an external integration/pilot, and a recorded maintainer decision.

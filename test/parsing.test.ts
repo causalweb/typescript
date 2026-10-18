@@ -9,8 +9,8 @@ import {
   serializeContext,
   Verifier,
 } from "../src/index.js";
-import { integer, parseObject } from "../src/json.js";
-import { absoluteUri, httpsIssuer } from "../src/uri.js";
+import { integer, parseObject } from "../src/protocol/json.js";
+import { absoluteUri, httpsIssuer } from "../src/protocol/uri.js";
 
 test("positions and URIs reject control and Unicode line terminators", () => {
   for (const suffix of ["\n", "\r", "\r\n", "\u2028", "\u2029", " ", "\t", "\0"]) {

@@ -1,8 +1,35 @@
-# Causal Web for TypeScript
+# Causal Web SDK for TypeScript
 
-An independent experimental Causal Web implementation for Node.js 24 and newer. It implements its own evidence validation, prefix evaluation, and HTTP behavior. Its separate `@causalweb/protocol/client` entry is portable Fetch client code for browser-capable runtimes; it transports opaque evidence but does not issue or verify it. The implementation does not call Rust, load a Rust binary, or use a shared protocol engine.
+`@causalweb/sdk` helps TypeScript applications issue evidence after a committed write, serve observations bound to trusted state lineage, and read those observations from another service. The server APIs run on Node.js 24 and newer. The `@causalweb/sdk/client` entry uses portable Fetch APIs for browser-capable runtimes; it carries opaque evidence but does not issue or verify it.
 
-The [specification](https://github.com/causalweb/spec) remains authoritative. This source preview follows draft `0.1.1-experimental` and vector revision `0.1.4`, with the exact commit in [SPEC_REVISION](SPEC_REVISION). There is no npm release yet; the package is deliberately private. The package name in `package.json` does not claim registry availability or ownership.
+The [wire specification](https://github.com/causalweb/spec) remains the interoperability contract, not the product developers install. This SDK follows draft `0.1.1-experimental` and vector revision `0.1.4`, with the exact commit in [SPEC_REVISION](SPEC_REVISION). It has no npm release yet; the package remains private, and its name does not claim registry availability or ownership.
+
+## Implement the protocol
+
+The SDK exposes the interoperable operations directly: `Issuer.issueCommitted` signs a fact **after** the application commits it; `Verifier.verify` checks an evidence token against configured trust; `Snapshot.evaluate` checks evidence against lineage bound to one state cut; `observe` and `handleNodeObservation` enforce an HTTP observation; and `fetchObservation` or `waitForObservation` carries evidence and checks the response. These are protocol building blocks, not a storage or service framework. The source checkout's `examples/orders/README.md` demonstrates a complete SQLite source/view integration.
+
+For a source route, the application's durable write comes first:
+
+```ts
+import { contextHeaders } from "@causalweb/sdk";
+
+const fact = await sourceStore.commitWithOutbox(input, requestKey);
+const now = BigInt(Math.floor(Date.now() / 1000));
+const evidence = issuer.issueCommitted({
+  subject: user.id,
+  audiences: [audience],
+  domain,
+  position: fact.position,
+  issuedAt: now,
+  expiresAt: now + 300n,
+}, now);
+response.writeHead(201, Object.fromEntries(contextHeaders([evidence])));
+response.end(JSON.stringify(fact.value));
+```
+
+`issuer` is an `Issuer` configured with the source's signing key and domain. The store must return a stable position only after its fact and recovery record commit; `requestKey` lets the application recover the same write if its response is lost. The observer and portable-client examples below show the other two roles.
+
+Application code still owns durable positions, commit/outbox recovery, authenticated delivery, atomic projection and lineage updates, authorization, and the immutable state cut used for each response. The SDK cannot infer those facts from a database handle.
 
 ## Try the local demo
 
@@ -13,7 +40,7 @@ npm ci --ignore-scripts
 npm run demo
 ```
 
-The demo starts separate HTTPS source and view processes with temporary SQLite databases. It shows a stale constrained read, recovers authenticated delivery, and confirms the read through the SDK client. It uses a test-only localhost certificate and disposable keys and credentials, then removes its temporary data. It is not a deployment recipe; the npm tarball contains the SDK but not this reference service. In the source checkout, read `reference/README.md` for persistent storage and operator-supplied certificates.
+The demo starts separate HTTPS source and view processes with temporary SQLite databases. It shows a stale constrained read, recovers authenticated delivery, and confirms the read through the SDK client. It uses a test-only localhost certificate and disposable keys and credentials, then removes its temporary data. It is not a deployment recipe; the npm tarball contains the SDK but not this example service. In the source checkout, read `examples/orders/README.md` for persistent storage and operator-supplied certificates.
 
 ## Verify the source and package
 
@@ -22,11 +49,11 @@ npm test
 npm run test:package
 ```
 
-The package check builds a real `.tgz`, installs it with its runtime dependency into a temporary application outside this repository, compiles strict Node and portable-client consumers, and runs the consumers in the source checkout's `test/consumer/`. It also runs the small [source-checkout order client](https://github.com/causalweb/typescript/blob/preview/typescript-product-milestone/reference/client.mjs) from that temporary application against the reference's two SQLite/HTTPS processes. The quickstart first observes one committed order as stale before delivery resumes; the copied client then writes another order and confirms it through the installed SDK client. Negative type tests check that callers cannot substitute a JavaScript `number` for a position or an unauthenticated object/string for verified evidence. This is package-consumption and local process evidence, not a registry release, external developer result, or power-loss durability test.
+The package check builds a real `.tgz`, installs it with its runtime dependency into a temporary application outside this repository, compiles strict Node and portable-client consumers, and runs the consumers in the source checkout's `test/consumer/`. It also runs the source-checkout order client at `examples/orders/bin/client.mjs` from that temporary application against the example's two SQLite/HTTPS processes. The quickstart first observes one committed order as stale before delivery resumes; the copied client then writes another order and confirms it through the installed SDK client. Negative type tests check that callers cannot substitute a JavaScript `number` for a position or an unauthenticated object/string for verified evidence. This is package-consumption and local process evidence, not a registry release, external developer result, or power-loss durability test.
 
 The SDK's published JavaScript is built with tsdown in unbundle mode so its existing ESM entry points and relative modules remain intact. TypeScript still checks the source, emits declarations, and compiles decorator-based integration tests; the package check exercises the resulting tarball.
 
-The tests exercise all shared fixtures, strict trust/encoding checks, and real loopback HTTP. They include a [persistent local-service experiment](PERSISTENT_DEMO.md): a source HTTP service writes an outbox before returning evidence, a projection service writes representation bytes and frontier in one document, and constrained reads move from `unsatisfied` to confirmed after propagation. It covers delayed, out-of-order, duplicate, forged, interrupted, and recovered events. A separate [SQLite experiment](SQLITE_DEMO.md) runs source and observer processes with independent transactional databases, including recovery after source or observer interruption. A POSIX-only [cross-runtime experiment](CROSS_RUNTIME_DEMO.md) runs a TypeScript source process and a Rust observer process over loopback HTTP. None is a production adapter or full deployment conformance.
+The tests exercise all shared fixtures, strict trust/encoding checks, real loopback HTTP, source and view recovery with separate SQLite databases, and a POSIX-only cross-runtime peer exchange. In the source checkout, `examples/orders/README.md` documents the example service's operational assumptions. These tests do not establish a production adapter or full deployment conformance.
 
 To check fixture provenance against an available `spec` checkout:
 
@@ -48,7 +75,7 @@ That development-only command checks both protocol engines against each other's 
 After installing the preview archive, a Node.js application can pass evidence from an operation that actually committed to the public client entry:
 
 ```ts
-import { fetchObservation } from "@causalweb/protocol/client";
+import { fetchObservation } from "@causalweb/sdk/client";
 
 const result = await fetchObservation(viewUrl, evidenceFromCommittedOperations, {
   request: { headers: { Authorization: authorizationHeader } },
@@ -72,7 +99,7 @@ For causal failures, the helper consumes and validates the bounded problem body 
 If a view may lag behind a committed operation, `waitForObservation` handles that one safe polling case:
 
 ```ts
-import { waitForObservation } from "@causalweb/protocol/client";
+import { waitForObservation } from "@causalweb/sdk/client";
 
 const result = await waitForObservation(viewUrl, evidenceTokens, {
   request: { headers: { Authorization: authorizationHeader } },
@@ -88,7 +115,7 @@ It accepts only `GET`, retries only when every validated outcome is `unsatisfied
 `handleNodeObservation` is an experimental adapter for an explicit `node:http` route. It reads `IncomingMessage.rawHeaders`, rather than Node's normalized header object, so repeated `Causal-Require` field lines remain distinct before Structured Fields parsing. A request without that field returns `false` and the host keeps normal routing ownership.
 
 ```ts
-import { handleNodeObservation } from "@causalweb/protocol";
+import { handleNodeObservation } from "@causalweb/sdk";
 
 const handled = await handleNodeObservation(request, response, {
   target: "/orders/42",
@@ -107,10 +134,10 @@ The adapter writes every causal response itself. It preserves separate `Set-Cook
 
 ### Fastify 5 adapter
 
-The optional `@causalweb/protocol/fastify` entry point is tested with Fastify `5.12.7`; applications install a compatible Fastify 5 themselves. It calls `reply.hijack()` only for a causal request, then delegates to the Node bridge using `request.raw` and `reply.raw`. Do not mix it with Fastify response headers or `reply.send()` on that path.
+The optional `@causalweb/sdk/fastify` entry point is tested with Fastify `5.12.7`; applications install a compatible Fastify 5 themselves. It calls `reply.hijack()` only for a causal request, then delegates to the Node bridge using `request.raw` and `reply.raw`. Do not mix it with Fastify response headers or `reply.send()` on that path.
 
 ```ts
-import { handleFastifyObservation } from "@causalweb/protocol/fastify";
+import { handleFastifyObservation } from "@causalweb/sdk/fastify";
 
 app.get("/orders/42", async (request, reply) => {
   if (await handleFastifyObservation(request, reply, observerOptions)) return reply;
@@ -147,7 +174,7 @@ Use `bigint` for positions, NumericDates, lifetime, skew, and the UTC clock. The
 
 Observers make one attempt and advertise `max_wait_seconds: 0`. `Prefer: wait` is ignored. A carrier can opt into the Prefix Profile's safe reduction rule with `retainedContextIndices` only after it has verified each evidence item under current policy. The helper returns indices into the original ordered compact-token list; it never rewrites or synthesizes evidence and retains every item it cannot safely omit. Observation evaluation itself preserves request order and duplicate indices.
 
-Read [CONFORMANCE.md](CONFORMANCE.md), [SECURITY.md](SECURITY.md), and [RELEASING.md](RELEASING.md) before deployment. The issuer, verifier, observer, and server adapters are Node.js code; `@causalweb/protocol/client` is a portable Fetch client entry, not a browser/WebCrypto issuer or verifier. Discussion belongs in [Causal Web Discussions](https://github.com/orgs/causalweb/discussions).
+Read [CONFORMANCE.md](CONFORMANCE.md), [SECURITY.md](SECURITY.md), and [RELEASING.md](RELEASING.md) before deployment. The issuer, verifier, observer, and server adapters are Node.js code; `@causalweb/sdk/client` is a portable Fetch client entry, not a browser/WebCrypto issuer or verifier. Discussion belongs in [Causal Web Discussions](https://github.com/orgs/causalweb/discussions).
 
 An external evaluator can use the [walkthrough and pilot protocol](PILOT.md) to record an independent integration attempt. No external result is claimed yet.
 
@@ -156,7 +183,7 @@ An external evaluator can use the [walkthrough and pilot protocol](PILOT.md) to 
 Use the client entry where Fetch, `Headers`, `Response`, `URL`, and abort signals are available. It preserves Causal Web request/response checks without importing Node cryptography or server adapters.
 
 ```ts
-import { fetchObservation } from "@causalweb/protocol/client";
+import { fetchObservation } from "@causalweb/sdk/client";
 
 const result = await fetchObservation("https://view.example/orders/42", evidenceTokens, {
   authenticated: async (response) => response.headers.has("x-authenticated-view"),
@@ -175,12 +202,12 @@ npm run build
 npm pack --ignore-scripts
 ```
 
-Install the generated tarball in an existing Node.js 24 ESM application with `npm install /absolute/path/to/the-generated.tgz`, then import from `@causalweb/protocol`. Do not import `dist/src` internals from the installed package. TypeScript applications need their usual TypeScript compiler and Node.js type definitions; the package check verifies them without the DOM library. The complete consumer example covers issuer/verifier setup, a bound snapshot, stale and confirmed responses, and authorization denial. Its source facts are synthetic and must be replaced by an actual storage adapter before use with real guarantees.
+Install the generated tarball in an existing Node.js 24 ESM application with `npm install /absolute/path/to/the-generated.tgz`, then import from `@causalweb/sdk`. Do not import `dist/src` internals from the installed package. TypeScript applications need their usual TypeScript compiler and Node.js type definitions; the package check verifies them without the DOM library. The complete consumer example covers issuer/verifier setup, a bound snapshot, stale and confirmed responses, and authorization denial. Its source facts are synthetic and must be replaced by an actual storage adapter before use with real guarantees.
 
 `observe` returns ordinary 403 when `authorize` resolves to `false`; it rechecks authorization after reading. Exceptions and invalid adapter results now reject with `ObservationError` instead of silently discarding their causes. Handle this before writing HTTP:
 
 ```ts
-import { observe, ObservationError, type ObservationOptions } from "@causalweb/protocol";
+import { observe, ObservationError, type ObservationOptions } from "@causalweb/sdk";
 
 async function handleObservation(options: ObservationOptions): Promise<Response> {
   try {

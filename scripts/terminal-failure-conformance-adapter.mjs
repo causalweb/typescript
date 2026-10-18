@@ -4,8 +4,12 @@ import { tmpdir } from "node:os";
 import { basename, dirname, join } from "node:path";
 import { DatabaseSync } from "node:sqlite";
 
-import { Issuer, Snapshot, sourceKey, Verifier } from "@causalweb/protocol";
-import { ORDER_CONTRACT, ORDER_SCHEMA, OrderViewStore } from "../reference/order-store.mjs";
+import { Issuer, Snapshot, sourceKey, Verifier } from "@causalweb/sdk";
+import {
+  ORDER_CONTRACT,
+  ORDER_SCHEMA,
+  OrderViewStore,
+} from "../examples/orders/src/order-store.mjs";
 
 const NOW = 100n;
 const ISSUER = "https://issuer.example";

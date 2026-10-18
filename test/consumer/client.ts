@@ -5,7 +5,7 @@ import {
   parseContext,
   requestHeaders,
   serializeContext,
-} from "@causalweb/protocol/client";
+} from "@causalweb/sdk/client";
 
 const opaqueEvidence = "eyJhbGciOiJFUzI1NiJ9.eyJqdGkiOiJ0ZXN0In0.signature";
 const field = serializeContext([opaqueEvidence]);

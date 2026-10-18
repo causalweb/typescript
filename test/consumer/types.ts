@@ -1,4 +1,4 @@
-import type { Issuer, Snapshot, VerifiedEvidence } from "@causalweb/protocol";
+import type { Issuer, Snapshot, VerifiedEvidence } from "@causalweb/sdk";
 
 function invalidUses(issuer: Issuer, snapshot: Snapshot<null>): void {
   // @ts-expect-error A plain object must not impersonate authenticated evidence.

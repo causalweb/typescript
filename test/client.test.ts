@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { afterEach, test, vi } from "vitest";
-import { fetchObservation } from "../src/client.js";
+import { fetchObservation } from "../src/client/index.js";
 
 afterEach(() => vi.unstubAllGlobals());
 

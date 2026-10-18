@@ -97,6 +97,10 @@ try {
   });
   assert.notEqual(missingNote.status, 0, "changed package without a new changeset must fail");
   delete env.CAUSALWEB_CHANGESET_BASE;
+  writeFileSync(
+    join(scratch, ".changeset", "release-rehearsal.md"),
+    `---\n"${json("package.json").name}": patch\n---\n\nSynthetic release rehearsal.\n`,
+  );
   npm(["run", "version:prepare"]);
   run("git", ["add", "package.json", "package-lock.json", "CHANGELOG.md", ".changeset"]);
   env.CAUSALWEB_CHANGESET_BASE = base;

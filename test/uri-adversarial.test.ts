@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { test } from "vitest";
-import { absoluteUri, httpsIssuer } from "../src/uri.js";
+import { absoluteUri, httpsIssuer } from "../src/protocol/uri.js";
 
 test("generated RFC 3986 components remain exact and reject malformed mutations", () => {
   let state = 0x3986;

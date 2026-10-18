@@ -11,7 +11,7 @@ npm run changeset:status
 npm run release:check
 ```
 
-Select `@causalweb/protocol`. Describe observable changes, compatibility/migration, and relevant limitations. Use patch for compatible fixes and minor for breaking experimental `0.x` APIs or new capabilities; never select major merely to signal that a draft is complete. Changesets prerelease arithmetic determines the final number. The note must not imply that a passing test constitutes an external audit or stable protocol approval.
+Select `@causalweb/sdk`. Describe observable changes, compatibility/migration, and relevant limitations. Use patch for compatible fixes and minor for breaking experimental `0.x` APIs or new capabilities; never select major merely to signal that a draft is complete. Changesets prerelease arithmetic determines the final number. The note must not imply that a passing test constitutes an external audit or stable protocol approval.
 
 For documentation/tooling-only changes that do not warrant an SDK release, use `npm run changeset -- --empty -m "Explain why no SDK release is needed"`. Commit the generated note with the change. CI compares new notes to the PR base; an existing note from an earlier PR does not satisfy that check.
 
